@@ -1,0 +1,16 @@
+{
+  "name": "ytdl-modern-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Modular local-hosted web server for YTDL Modern",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

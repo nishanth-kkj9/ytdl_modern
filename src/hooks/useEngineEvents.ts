@@ -1,0 +1,183 @@
+import { useEffect, useRef } from "react";
+import { listen, invoke, type UnlistenFn } from "../api/transport";
+import { useDownloadStore } from "../stores/downloadStore";
+import { FormatInfo } from "../types";
+
+export function useEngineEvents() {
+  const updateQueueItem = useDownloadStore((state) => state.updateQueueItem);
+  const addHistoryItem = useDownloadStore((state) => state.addHistoryItem);
+  const setProbeInfo = useDownloadStore((state) => state.setProbeInfo);
+  const addLog = useDownloadStore((state) => state.addLog);
+  const setEngineStatus = useDownloadStore((state) => state.setEngineStatus);
+  const setMetadataResult = useDownloadStore((state) => state.setMetadataResult);
+
+  const downloadBaseRef = useRef<string | null>(null);
+  const hasSeenReadyRef = useRef(false);
+
+  function parseFormats(raw: unknown): FormatInfo[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((f: unknown) => {
+      const fmt = f as Record<string, unknown>;
+      return {
+        format_id: String(fmt.format_id ?? ""),
+        ext: String(fmt.ext ?? ""),
+        resolution: fmt.resolution ? String(fmt.resolution) : undefined,
+        filesize: fmt.filesize ? Number(fmt.filesize) : undefined,
+        fps: fmt.fps ? Number(fmt.fps) : undefined,
+        vcodec: fmt.vcodec && String(fmt.vcodec) !== "none" ? String(fmt.vcodec) : undefined,
+        acodec: fmt.acodec && String(fmt.acodec) !== "none" ? String(fmt.acodec) : undefined,
+        abr: fmt.abr ? Number(fmt.abr) : undefined,
+        vbr: fmt.vbr ? Number(fmt.vbr) : undefined,
+        tbr: fmt.tbr ? Number(fmt.tbr) : undefined,
+        channels: fmt.channels ? Number(fmt.channels) : undefined,
+        audio_sample_rate: fmt.audio_sample_rate ? Number(fmt.audio_sample_rate) : undefined,
+      };
+    });
+  }
+
+  useEffect(() => {
+    let unlistenEngine: UnlistenFn | null = null;
+
+    (async () => {
+      try {
+        const dir = await invoke<string>("get_download_dir");
+        let base = dir.replace(/\\/g, "/");
+        if (base.endsWith("/downloads")) {
+          base = base.slice(0, -10);
+        }
+        downloadBaseRef.current = base;
+      } catch {
+        // download base unavailable — filepath resolution skipped
+      }
+
+      unlistenEngine = await listen("engine-event", (event) => {
+        const payload = event.payload as Record<string, unknown>;
+        if (payload.type === "engine_ready" && !hasSeenReadyRef.current) {
+          hasSeenReadyRef.current = true;
+          setEngineStatus("ready");
+        }
+        if (payload.type === "fatal_error") {
+          setEngineStatus("error");
+        }
+        const id = String(payload.id ?? "");
+
+        switch (payload.type) {
+          case "probe_result": {
+            const info = payload.info as Record<string, unknown>;
+            if (info) {
+              setProbeInfo({
+                id,
+                title: String(info.title ?? "Unknown title"),
+                uploader: String(info.uploader ?? "Unknown uploader"),
+                duration: Number(info.duration ?? 0),
+                thumbnail: String(info.thumbnail ?? ""),
+                url: String(info.webpage_url ?? ""),
+                description: String(info.description ?? ""),
+                formats: parseFormats(info.formats),
+              });
+              addLog(`Probe success: ${String(info.title ?? "unknown")}`);
+            }
+            return;
+          }
+          case "download_started": {
+            updateQueueItem(id, { status: "downloading", message: "Starting" });
+            setMetadataResult(null);
+            return;
+          }
+          case "progress": {
+            const downloaded = Number(payload.downloaded ?? 0);
+            const total = Number(payload.total ?? 0);
+            const progress = total > 0 ? downloaded / total : 0;
+            const speed = Number(payload.speed ?? 0);
+            updateQueueItem(id, {
+              status: "downloading",
+              downloaded,
+              total,
+              progress,
+              speed,
+              message: String(payload.status ?? "downloading"),
+            });
+            return;
+          }
+          case "result": {
+            const success = Boolean(payload.success ?? false);
+            const fmt = String(payload.fmt ?? "");
+            const resolvedType = ["mp4", "webm", "mkv"].includes(fmt.toLowerCase()) ? "video" : "audio";
+            let filepath = String(payload.filepath ?? "");
+            if (filepath && !/^[A-Za-z]:\\/.test(filepath) && downloadBaseRef.current) {
+              filepath = downloadBaseRef.current + "/" + filepath.replace(/\\/g, "/");
+            }
+            updateQueueItem(id, {
+              status: success ? ("completed" as const) : ("failed" as const),
+              filepath,
+              message: success ? "Completed" : String(payload.error ?? "Failed"),
+              progress: success ? 1 : 0,
+              title: payload.title ? String(payload.title) : undefined,
+            });
+            addLog(`Download ${success ? "finished" : "failed"}: ${id}`);
+            if (success) {
+              const queueItem = useDownloadStore.getState().queue.find((qi) => qi.id === id);
+              addHistoryItem({
+                id,
+                title: String(payload.title ?? "Unknown title"),
+                fmt,
+                size: String(payload.file_size ?? "0"),
+                duration: String(payload.duration ?? "0"),
+                url: String(payload.url ?? ""),
+                downloaded_at: new Date().toISOString(),
+                filepath,
+                type: resolvedType,
+                status: "completed",
+                thumbnail: queueItem?.thumbnail,
+              });
+              const rawFields = payload.metadata_fields as Record<string, string> | undefined;
+              const rawVerify = payload.metadata_verify as Record<string, boolean> | undefined;
+              if (rawFields || rawVerify) {
+                setMetadataResult({
+                  fields: rawFields ?? {},
+                  verify: rawVerify ?? {},
+                  engine: String(payload.metadata_engine ?? ""),
+                  container: String(payload.metadata_container ?? ""),
+                  cover_art: Boolean(payload.metadata_cover_art ?? false),
+                });
+              }
+            }
+            return;
+          }
+          case "cancelled": {
+            updateQueueItem(id, { status: "cancelled", message: "Cancelled" });
+            addLog(`Cancelled: ${id}`);
+            return;
+          }
+          case "error": {
+            updateQueueItem(id, { status: "failed", message: String(payload.error ?? "Error") });
+            addLog(`Engine error: ${String(payload.error_type ?? "")}: ${String(payload.error ?? "")}`);
+            return;
+          }
+          case "engine_ready": {
+            const ff = payload.ffmpeg ? "yes" : "no";
+            const fp = payload.ffprobe ? "yes" : "no";
+            const dn = payload.deno ? "yes" : "no";
+            addLog(`Engine ready — ffmpeg=${ff} ffprobe=${fp} deno=${dn}`);
+            return;
+          }
+          case "engine_log": {
+            addLog(`Engine: ${String(payload.message ?? "")}`);
+            return;
+          }
+          case "fatal_error": {
+            addLog(`Fatal engine error: ${String(payload.error ?? "")}`);
+            return;
+          }
+          default: {
+            addLog(`Engine event: ${String(payload.type ?? "unknown")}`);
+          }
+        }
+      });
+    })();
+
+    return () => {
+      unlistenEngine?.();
+    };
+  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, updateQueueItem]);
+}
