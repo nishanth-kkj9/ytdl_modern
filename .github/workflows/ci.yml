@@ -77,7 +77,11 @@ jobs:
 
       - name: Install Python deps
         run: |
-          pip install yt-dlp mutagen
+          pip install -r python-engine/requirements.txt
+
+      - name: Install test runner
+        run: |
+          pip install pytest
 
       - name: Syntax check Python files
         run: |
@@ -89,6 +93,11 @@ jobs:
       - name: Import check
         run: |
           python -c "import sys; sys.path.insert(0, 'python-engine'); import engine; import helpers; import logger; print('Python imports OK')"
+
+      - name: Run Python unit tests
+        run: |
+          cd python-engine
+          python -m pytest tests -v
 
   smoke:
     name: Smoke Tests

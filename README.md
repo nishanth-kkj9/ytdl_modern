@@ -84,8 +84,7 @@ Browser ──HTTP/WS──▶ Node.js server (web/server.mjs)
 - **Node.js** 18+ (for the web server and frontend build)
 - **Python** 3.9+ (for the download engine)
 - **FFmpeg** (required for audio extraction and video merging)
-- **yt-dlp** (`pip install yt-dlp`)
-- **mutagen** (`pip install mutagen`)
+- **Python deps** (`pip install -r python-engine/requirements.txt`)
 
 ### Setup
 
@@ -98,7 +97,7 @@ cd web && npm install
 cd ..
 
 # 3. Install Python deps
-pip install yt-dlp mutagen
+pip install -r python-engine/requirements.txt
 
 # 4. Build the frontend (once)
 npm run build

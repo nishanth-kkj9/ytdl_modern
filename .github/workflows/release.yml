@@ -63,7 +63,7 @@ jobs:
 
             ### Installation
             1. Extract the archive to your desired location.
-            2. Install Python deps: `pip install yt-dlp mutagen`
+            2. Install Python deps: `pip install -r python-engine/requirements.txt`
             3. Install Node deps: `cd web && npm install`
             4. Start the server: `npm run server`
             5. Open http://127.0.0.1:3000 in your browser.

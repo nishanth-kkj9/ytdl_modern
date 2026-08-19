@@ -73,17 +73,12 @@ async function main() {
         payload: { ready: engine.isReady() },
       })
     );
-    socket.on("message", (raw) => {
-      // Allow clients to send commands over WS too (future-proof).
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.cmd) {
-          engine.sendCommand(msg);
-        }
-      } catch {
-        /* ignore malformed messages */
-      }
-    });
+    // Note: The WebSocket is strictly for server → client event broadcasting.
+    // Incoming commands are NOT accepted here — all mutating operations
+    // (probe, download, cancel) go through the validated REST API routes.
+    // This prevents Cross-Site WebSocket Hijacking (CSWSH) attacks where a
+    // malicious website could otherwise drive arbitrary downloads or
+    // arbitrary file writes via the Python engine.
   });
 
   // ── Start engine ────────────────────────────────────────────────────────

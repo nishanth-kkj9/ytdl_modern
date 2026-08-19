@@ -158,12 +158,35 @@ def _run_download(id_: str, url: str, audio_format: str, quality: str, output_di
             _DOWNLOAD_JOBS.pop(id_, None)
 
 
+def _resolve_output_dir(output_dir: str) -> str | None:
+    """Resolve output_dir and enforce it stays within the project downloads folder.
+
+    Returns a canonical absolute path on success, or None to signal rejection.
+    This is a defense-in-depth guard: the Node layer already locks `output_dir`
+    to `config.downloadsDir`, but the engine must not blindly trust its input
+    if that boundary is ever bypassed. `realpath` also resolves symlinks, so a
+    symlink inside downloads that points elsewhere is rejected.
+    """
+    if not output_dir:
+        output_dir = os.path.join(_YDL_PROJECT_ROOT, "..", "downloads")
+
+    expected_base = os.path.realpath(os.path.join(_YDL_PROJECT_ROOT, "..", "downloads"))
+
+    resolved = os.path.realpath(output_dir)
+    resolved_norm = os.path.normcase(resolved)
+    base_norm = os.path.normcase(expected_base)
+
+    if resolved_norm != base_norm and not resolved_norm.startswith(base_norm + os.sep):
+        return None
+    return resolved
+
+
 def _start_download(command: dict[str, Any]) -> None:
     id_ = str(command.get("id", "")).strip()
     url = str(command.get("url", "")).strip()
     audio_format = str(command.get("format", "opus")).strip() or "opus"
     quality = str(command.get("quality", "high")).strip() or "high"
-    output_dir = str(command.get("output_dir", "downloads")).strip() or "downloads"
+    output_dir = str(command.get("output_dir", "")).strip()
     mode = str(command.get("mode", "audio")).strip() or "audio"
 
     if not id_ or not url:
@@ -174,6 +197,16 @@ def _start_download(command: dict[str, Any]) -> None:
         if id_ in _DOWNLOAD_JOBS:
             _write_error(id_, "DuplicateId", f"Download id '{id_}' is already active")
             return
+
+    resolved_output = _resolve_output_dir(output_dir)
+    if resolved_output is None:
+        _write_error(
+            id_,
+            "InvalidPath",
+            f"output_dir '{output_dir}' is outside the allowed downloads directory",
+        )
+        return
+    output_dir = resolved_output
 
     os.makedirs(output_dir, exist_ok=True)
     thread = threading.Thread(
