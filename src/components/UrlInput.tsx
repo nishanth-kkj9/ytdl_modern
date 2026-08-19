@@ -14,6 +14,7 @@ export function UrlInput() {
   const selectedQuality = useDownloadStore((state) => state.selectedQuality);
   const probeUrl = useDownloadStore((state) => state.probeUrl);
   const enqueueDownload = useDownloadStore((state) => state.enqueueDownload);
+  const setProbeInfo = useDownloadStore((state) => state.setProbeInfo);
 
   const isValid = YOUTUBE_REGEX.test(url.trim());
   const isAudio = selectedMode === "audio";
@@ -40,6 +41,7 @@ export function UrlInput() {
     } : undefined;
     await enqueueDownload(url.trim(), selectedFormat, selectedQuality, selectedMode, meta);
     setUrl("");
+    setProbeInfo(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -15,7 +15,6 @@ export const config = {
 
   // Paths
   projectRoot,
-  publicDir: path.join(__dirname, "public"),
   distDir: path.join(projectRoot, "dist"),
   engineEntry: path.join(projectRoot, "python-engine", "ipc_main.py"),
   downloadsDir: path.join(projectRoot, "downloads"),

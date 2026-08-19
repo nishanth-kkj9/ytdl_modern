@@ -79,7 +79,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
             title: meta?.title || url,
             format,
             quality,
-            status: "downloading",
+            status: "queued",
             progress: 0,
             downloaded: 0,
             total: 0,

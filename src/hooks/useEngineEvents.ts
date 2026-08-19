@@ -21,16 +21,16 @@ export function useEngineEvents() {
       return {
         format_id: String(fmt.format_id ?? ""),
         ext: String(fmt.ext ?? ""),
-        resolution: fmt.resolution ? String(fmt.resolution) : undefined,
-        filesize: fmt.filesize ? Number(fmt.filesize) : undefined,
-        fps: fmt.fps ? Number(fmt.fps) : undefined,
+        resolution: fmt.resolution != null ? String(fmt.resolution) : undefined,
+        filesize: fmt.filesize != null ? Number(fmt.filesize) : undefined,
+        fps: fmt.fps != null ? Number(fmt.fps) : undefined,
         vcodec: fmt.vcodec && String(fmt.vcodec) !== "none" ? String(fmt.vcodec) : undefined,
         acodec: fmt.acodec && String(fmt.acodec) !== "none" ? String(fmt.acodec) : undefined,
-        abr: fmt.abr ? Number(fmt.abr) : undefined,
-        vbr: fmt.vbr ? Number(fmt.vbr) : undefined,
-        tbr: fmt.tbr ? Number(fmt.tbr) : undefined,
-        channels: fmt.channels ? Number(fmt.channels) : undefined,
-        audio_sample_rate: fmt.audio_sample_rate ? Number(fmt.audio_sample_rate) : undefined,
+        abr: fmt.abr != null ? Number(fmt.abr) : undefined,
+        vbr: fmt.vbr != null ? Number(fmt.vbr) : undefined,
+        tbr: fmt.tbr != null ? Number(fmt.tbr) : undefined,
+        channels: fmt.channels != null ? Number(fmt.channels) : undefined,
+        audio_sample_rate: fmt.audio_sample_rate != null ? Number(fmt.audio_sample_rate) : undefined,
       };
     });
   }

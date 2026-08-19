@@ -138,10 +138,10 @@ export function ProbeCard({ info }: ProbeCardProps) {
               id="probe-formats-list"
               className="flex max-h-48 flex-col gap-1.5 overflow-y-auto border-t border-border px-5 py-3"
             >
-              {info.formats.map((f) => (
+              {info.formats.map((f, i) => (
                 f.vcodec === "none" || !f.vcodec
-                  ? <AudioFormatRow key={f.format_id} f={f} />
-                  : <VideoFormatRow key={f.format_id} f={f} />
+                  ? <AudioFormatRow key={`${f.format_id}-${i}`} f={f} />
+                  : <VideoFormatRow key={`${f.format_id}-${i}`} f={f} />
               ))}
             </div>
           )}

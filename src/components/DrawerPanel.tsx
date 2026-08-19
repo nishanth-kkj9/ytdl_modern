@@ -26,6 +26,16 @@ export function DrawerPanel({ open, tab, onTabChange, onClose }: DrawerPanelProp
     }
   }, [open]);
 
+  // Close on Escape key when open.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
   const cancelAll = () => {
     for (const item of active) {
       cancelDownload(item.id);

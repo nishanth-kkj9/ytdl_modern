@@ -38,6 +38,10 @@ class JsonHistoryService {
     } else {
       this.records.unshift(record);
     }
+    // Cap history at 100 records to prevent unbounded file growth.
+    if (this.records.length > 100) {
+      this.records = this.records.slice(0, 100);
+    }
     await fs.writeFile(this.file, JSON.stringify(this.records, null, 2), "utf8");
     return record;
   }

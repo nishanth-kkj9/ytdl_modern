@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install backend deps
+        working-directory: web
+        run: npm ci
+
+      - name: Create release archive
+        run: |
+          mkdir -p release/ytdl-modern
+          cp -r dist release/ytdl-modern/
+          cp -r web release/ytdl-modern/
+          cp -r python-engine release/ytdl-modern/
+          cp package.json release/ytdl-modern/
+          cp README.md release/ytdl-modern/
+          cd release
+          tar -czf ytdl-modern-${{ github.ref_name }}.tar.gz ytdl-modern/
+          zip -r ytdl-modern-${{ github.ref_name }}.zip ytdl-modern/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            release/ytdl-modern-${{ github.ref_name }}.tar.gz
+            release/ytdl-modern-${{ github.ref_name }}.zip
+          body: |
+            ## YTDL Modern ${{ github.ref_name }}
+
+            ### What's New
+            - See the [CHANGELOG](CHANGELOG.md) for details.
+
+            ### Installation
+            1. Extract the archive to your desired location.
+            2. Install Python deps: `pip install yt-dlp mutagen`
+            3. Install Node deps: `cd web && npm install`
+            4. Start the server: `npm run server`
+            5. Open http://127.0.0.1:3000 in your browser.
