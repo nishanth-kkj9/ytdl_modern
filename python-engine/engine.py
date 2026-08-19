@@ -1050,6 +1050,22 @@ class AudioDownloadEngine:
         if self._deno_bin:
             opts["js_runtimes"] = {"deno": {"path": self._deno_bin}}
 
+        # YouTube 403s the default web client for media downloads — use mobile
+        # player clients + Android UA from the start (the old retry-only path
+        # never triggered because the 403 throws before stream resolution).
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["ios", "android_music", "android", "web"],
+            }
+        }
+        opts["http_headers"] = {
+            "User-Agent": (
+                "com.google.android.youtube/17.31.35 "
+                "(Linux; U; Android 11) gzip"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
         if self.mode == "video":
             if self._ffmpeg_bin:
                 opts["ffmpeg_location"] = self._ffmpeg_dir
