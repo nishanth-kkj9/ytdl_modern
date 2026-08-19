@@ -22,6 +22,23 @@ async function main() {
   app.use(express.json({ limit: "1mb" }));
   app.disable("x-powered-by");
 
+  // Reject requests with unexpected Host headers (DNS rebinding protection).
+  // A local server must only be reachable via 127.0.0.1/localhost — an
+  // attacker-controlled domain resolving to 127.0.0.1 must not pass.
+  const allowedHosts = new Set([
+    `127.0.0.1:${config.port}`,
+    `localhost:${config.port}`,
+    "127.0.0.1",
+    "localhost",
+  ]);
+  app.use((req, res, next) => {
+    const host = String(req.headers.host || "").toLowerCase();
+    if (!allowedHosts.has(host)) {
+      return res.status(421).json({ error: "Invalid Host header" });
+    }
+    next();
+  });
+
   // API routes (modular — add feature routes here).
   app.use("/api/probe", probeRouter(engine));
   app.use("/api/download", downloadRouter(engine));

@@ -17,6 +17,7 @@ import shutil
 import sys
 import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from engine import AudioDownloadEngine, DownloadResult, classify_error_type
@@ -41,6 +42,9 @@ def _emit_ready() -> None:
 
 _DOWNLOAD_JOBS: dict[str, dict[str, Any]] = {}
 _LOCK = threading.Lock()
+# Bound concurrent downloads — yt-dlp + ffmpeg are CPU/I/O heavy, and more
+# than a handful at once degrades the whole system.
+_EXECUTOR = ThreadPoolExecutor(max_workers=5)
 
 
 def _write_message(message: dict[str, Any]) -> None:
@@ -209,12 +213,7 @@ def _start_download(command: dict[str, Any]) -> None:
     output_dir = resolved_output
 
     os.makedirs(output_dir, exist_ok=True)
-    thread = threading.Thread(
-        target=_run_download,
-        args=(id_, url, audio_format, quality, output_dir, mode),
-        daemon=True,
-    )
-    thread.start()
+    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode)
     _write_message({
         "type": "download_started",
         "id": id_,
@@ -283,6 +282,10 @@ def main() -> None:
             continue
 
         _handle_command(command)
+
+    # stdin closed — stop accepting work. wait=False so the process can exit
+    # even with in-flight downloads (workers are non-daemon by default).
+    _EXECUTOR.shutdown(wait=False)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ import sys
 import time
 import threading
 import urllib.request
+from urllib.parse import urlparse
 from dataclasses import dataclass, field, asdict
 from typing import Callable, Optional
 
@@ -249,6 +250,18 @@ class _SpeedTracker:
 #  Thumbnail helpers  — maximum quality selection
 # ══════════════════════════════════════════════════════════════════════════════
 
+_ALLOWED_THUMBNAIL_DOMAINS = (".ytimg.com", ".googleusercontent.com", ".googlevideo.com", ".youtube.com")
+
+
+def _is_safe_thumbnail_url(url: str) -> bool:
+    """Only fetch thumbnails from YouTube's known CDN domains (SSRF guard)."""
+    try:
+        hostname = urlparse(url).hostname or ""
+        return hostname.endswith(_ALLOWED_THUMBNAIL_DOMAINS)
+    except Exception:
+        return False
+
+
 def _best_thumbnail_url(info: dict) -> str:
     """
     Return the highest-resolution thumbnail URL available.
@@ -275,7 +288,7 @@ def _best_thumbnail_url(info: dict) -> str:
     if direct_url and (
         "maxresdefault" in direct_url or "sddefault" in direct_url
     ):
-        return direct_url
+        return direct_url if _is_safe_thumbnail_url(direct_url) else ""
 
     # Strategy 1: probe YouTube's standard thumbnail URL hierarchy (max 3 s each)
     if vid_id:
@@ -298,7 +311,7 @@ def _best_thumbnail_url(info: dict) -> str:
     # Strategy 2: sorted thumbnails list
     thumbs = info.get("thumbnails") or []
     sorted_thumbs = sorted(
-        (t for t in thumbs if t.get("url")),
+        (t for t in thumbs if t.get("url") and _is_safe_thumbnail_url(t["url"])),
         key=lambda t: (t.get("width") or 0) * (t.get("height") or 0),
         reverse=True,
     )
@@ -306,12 +319,15 @@ def _best_thumbnail_url(info: dict) -> str:
         return sorted_thumbs[0]["url"]
 
     # Strategy 3: fallback to thumbnail field
-    return direct_url
+    return direct_url if _is_safe_thumbnail_url(direct_url) else ""
 
 
 def _download_bytes(url: str, timeout: int = 15) -> bytes | None:
     """Download raw bytes from a URL with a proper browser User-Agent."""
     if not url:
+        return None
+    if not _is_safe_thumbnail_url(url):
+        applog.warn(f"Rejected unsafe thumbnail URL: {url}")
         return None
     try:
         req = urllib.request.Request(

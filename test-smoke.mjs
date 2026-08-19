@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import http from "node:http";
 
 async function run() {
   const base = "http://127.0.0.1:3000";
@@ -27,6 +28,19 @@ async function run() {
   });
   assert.strictEqual(probeBad.status, 400, "Bad probe should return 400");
   console.log("✓ POST /api/probe validation OK");
+
+  // 4b. DNS rebinding protection (bad Host header should fail with 421).
+  // Note: fetch() strips the Host header (forbidden header), so use raw http.
+  const rebindStatus = await new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port: 3000, path: "/api/health", headers: { Host: "evil.com" } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on("error", reject);
+    req.end();
+  });
+  assert.strictEqual(rebindStatus, 421, "Evil Host header should return 421");
+  console.log("✓ Host header validation OK");
 
   // 5. History clear (DELETE)
   const clearRes = await fetch(`${base}/api/history`, { method: "DELETE" }).then(r => r.json());

@@ -182,7 +182,9 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     set((state) => {
       if (state.history.some((h) => h.id === record.id)) return state;
       const nextHistory = [record, ...state.history].slice(0, 100);
-      invoke("save_history", { record }).catch(() => {});
+      invoke("save_history", { record }).catch((err) => {
+        get().addLog(`History save failed: ${String(err)}`, "warn");
+      });
       return {
         history: nextHistory,
         queue: state.queue.filter((item) => item.id !== record.id),

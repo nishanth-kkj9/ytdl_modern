@@ -23,6 +23,7 @@ export class EngineManager {
     this.stdin = null;
     this.restartAttempts = 0;
     this.ready = false;
+    this.fatalError = false;
     this.pendingCommands = [];
   }
 
@@ -31,6 +32,7 @@ export class EngineManager {
   }
 
   spawn() {
+    this.fatalError = false;
     const pythonExe = process.env.PYTHON || "python";
     const args = [config.engineEntry];
     const child = spawn(pythonExe, args, {
@@ -96,6 +98,8 @@ export class EngineManager {
 
   maybeRestart() {
     if (this.restartAttempts >= config.engineMaxRestarts) {
+      this.fatalError = true;
+      this.pendingCommands = [];
       this.bus.emit("fatal_error", {
         error: "Engine crashed and could not be restarted.",
       });
@@ -107,6 +111,9 @@ export class EngineManager {
   }
 
   sendCommand(command) {
+    if (this.fatalError) {
+      throw new Error("Engine is in fatal error state");
+    }
     if (!this.stdin || this.stdin.destroyed) {
       // Queue the command — the engine may still be starting up.
       this.pendingCommands.push(command);

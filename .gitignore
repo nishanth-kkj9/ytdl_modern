@@ -33,3 +33,10 @@ tsc-output.txt
 __pycache__
 *.pyc
 python-engine/binaries
+
+# Python tooling
+.pytest_cache
+.mypy_cache
+.venv
+venv/
+.env

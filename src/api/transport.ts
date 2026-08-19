@@ -13,12 +13,16 @@ export type UnlistenFn = () => void;
 
 // ── WebSocket event bus state ────────────────────────────────────────────────
 let ws: WebSocket | null = null;
+let reconnectAttempts = 0;
 const eventHandlers = new Map<string, Set<(payload: any) => void>>();
 
 function ensureWebSocket() {
   if (ws) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => {
+    reconnectAttempts = 0;
+  };
   ws.onmessage = (msg) => {
     let data: any;
     try {
@@ -44,8 +48,11 @@ function ensureWebSocket() {
   };
   ws.onclose = () => {
     ws = null;
-    // Attempt reconnect
-    setTimeout(ensureWebSocket, 1500);
+    // Reconnect with exponential backoff (1.5s → capped at 30s) so a dead
+    // server doesn't trigger an infinite rapid-fire reconnect loop.
+    const delay = Math.min(1500 * Math.pow(2, reconnectAttempts), 30000);
+    reconnectAttempts++;
+    setTimeout(ensureWebSocket, delay);
   };
 }
 
