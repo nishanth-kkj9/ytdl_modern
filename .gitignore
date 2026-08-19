@@ -25,6 +25,7 @@ dist-ssr
 
 temp_logs
 downloads
+web/data
 graphify-out
 tsc-output.txt
 .opencode
