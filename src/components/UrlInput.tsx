@@ -3,6 +3,35 @@ import { useDownloadStore } from "../stores/downloadStore";
 
 const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(watch\?v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}/i;
 
+const audioFormats = [
+  { value: "mp3", label: "MP3" },
+  { value: "opus", label: "Opus" },
+  { value: "m4a", label: "M4A (AAC)" },
+  { value: "wav", label: "WAV" },
+];
+
+const videoFormats = [
+  { value: "mp4", label: "MP4" },
+  { value: "webm", label: "WebM" },
+  { value: "mkv", label: "MKV" },
+];
+
+const audioQualities = [
+  { value: "maximum", label: "Maximum (best available)" },
+  { value: "high", label: "High (192k)" },
+  { value: "medium", label: "Medium (128k)" },
+  { value: "low", label: "Low (96k)" },
+];
+
+const videoQualities = [
+  { value: "best", label: "Best available" },
+  { value: "2160p", label: "4K (2160p)" },
+  { value: "1080p", label: "1080p Full HD" },
+  { value: "720p", label: "720p HD" },
+  { value: "480p", label: "480p" },
+  { value: "360p", label: "360p" },
+];
+
 export function UrlInput() {
   const [url, setUrl] = useState("");
   const [probing, setProbing] = useState(false);
@@ -12,12 +41,20 @@ export function UrlInput() {
   const selectedMode = useDownloadStore((state) => state.selectedMode);
   const selectedFormat = useDownloadStore((state) => state.selectedFormat);
   const selectedQuality = useDownloadStore((state) => state.selectedQuality);
+  const setSelectedMode = useDownloadStore((state) => state.setSelectedMode);
+  const setSelectedFormat = useDownloadStore((state) => state.setSelectedFormat);
+  const setSelectedQuality = useDownloadStore((state) => state.setSelectedQuality);
+  const queue = useDownloadStore((state) => state.queue);
   const probeUrl = useDownloadStore((state) => state.probeUrl);
   const enqueueDownload = useDownloadStore((state) => state.enqueueDownload);
   const setProbeInfo = useDownloadStore((state) => state.setProbeInfo);
 
   const isValid = YOUTUBE_REGEX.test(url.trim());
   const isAudio = selectedMode === "audio";
+  const formats = isAudio ? audioFormats : videoFormats;
+  const qualities = isAudio ? audioQualities : videoQualities;
+  const activeCount = queue.filter((i) => i.status === "downloading").length;
+  const queuedCount = queue.filter((i) => i.status === "queued").length;
 
   const handleProbe = async () => {
     if (!isValid || probing) return;
@@ -100,7 +137,7 @@ export function UrlInput() {
             disabled={!isValid}
             onClick={handleProbe}
             aria-busy={probing}
-            className={`btn shrink-0 ${isAudio ? "btn-audio" : "btn-video"}`}
+            className="btn btn-ghost shrink-0"
           >
             {probing ? (
               <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
@@ -129,6 +166,77 @@ export function UrlInput() {
           </button>
         </div>
 
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sr-only" id="mode-label">Download mode</div>
+          <div role="radiogroup" aria-labelledby="mode-label" className="relative flex items-center gap-1 rounded-2xl bg-bg/70 p-1 ring-1 ring-white/5">
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-y-1 w-[calc(50%-4px)] rounded-xl transition-all duration-200 ease-out ${
+                isAudio
+                  ? "left-1 bg-accent-audio-dim shadow-[0_0_0_1px_rgba(245,158,11,0.25),0_0_20px_rgba(245,158,11,0.1)]"
+                  : "left-[calc(50%)] bg-accent-video-dim shadow-[0_0_0_1px_rgba(0,184,212,0.25),0_0_20px_rgba(0,184,212,0.1)]"
+              }`}
+            />
+            <button
+              type="button"
+              role="radio"
+              aria-checked={isAudio}
+              onClick={() => setSelectedMode("audio")}
+              className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${
+                isAudio ? "text-accent-audio" : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+              Audio
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!isAudio}
+              onClick={() => setSelectedMode("video")}
+              className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${
+                !isAudio ? "text-accent-video" : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Video
+            </button>
+          </div>
+
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 sm:flex-none">
+              <span className="eyebrow">Format</span>
+              <select
+                value={selectedFormat}
+                onChange={(e) => setSelectedFormat(e.target.value)}
+                className="select-input w-full sm:w-40"
+                aria-label="Format"
+              >
+                {formats.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-1 flex-col gap-1 sm:flex-none">
+              <span className="eyebrow">Quality</span>
+              <select
+                value={selectedQuality}
+                onChange={(e) => setSelectedQuality(e.target.value)}
+                className="select-input w-full sm:w-40"
+                aria-label="Quality"
+              >
+                {qualities.map((q) => (
+                  <option key={q.value} value={q.value}>{q.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
         <div
           id="url-status"
           aria-live="polite"
@@ -142,6 +250,13 @@ export function UrlInput() {
           </div>
           <span className="text-[10px] font-medium tracking-wider text-text-muted uppercase">ytdl_modern</span>
         </div>
+
+        {queue.length > 0 && (
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-bg/50 px-4 py-2.5 text-xs">
+            <span className="text-text-muted">{queuedCount > 0 ? `${queuedCount} queued` : ""}{queuedCount > 0 && activeCount > 0 ? " · " : ""}{activeCount > 0 ? `${activeCount} downloading` : ""}</span>
+            <span className="text-text-muted tabular-nums">{queue.length} in queue</span>
+          </div>
+        )}
 
         {probeError && (
           <div role="alert" className="mt-3 rounded-xl border border-error/30 bg-error/10 px-4 py-3">
