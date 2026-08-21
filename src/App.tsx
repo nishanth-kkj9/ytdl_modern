@@ -3,7 +3,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { DrawerPanel } from "./components/DrawerPanel";
 import { UrlInput } from "./components/UrlInput";
-import { FormatPicker } from "./components/FormatPicker";
 import { ProbeCard } from "./components/ProbeCard";
 import { EmptyState } from "./components/EmptyState";
 import { WaveformProgress } from "./components/WaveformProgress";
@@ -20,8 +19,7 @@ function App() {
   const selectedMode = useDownloadStore((state) => state.selectedMode);
   const engineStatus = useDownloadStore((state) => state.engineStatus);
 
-  const activeCount = queue.filter((i) => i.status === "downloading").length;
-  const queuedCount = queue.filter((i) => i.status === "queued").length;
+  const totalQueued = queue.length;
 
   const [drawerTab, setDrawerTab] = useState<"downloads" | "history">("downloads");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -64,11 +62,8 @@ function App() {
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${engineDot}`} aria-hidden="true" />
                     {engineLabel}
                   </span>
-                  {activeCount > 0 && (
-                    <span className="tag tag-downloading">{activeCount} active</span>
-                  )}
-                  {queuedCount > 0 && (
-                    <span className="tag tag-queued">{queuedCount} queued</span>
+                  {totalQueued > 0 && (
+                    <span className="tag tag-downloading">{totalQueued} in queue</span>
                   )}
                   <span className={`tag ${selectedMode === "audio" ? "tag-audio" : "tag-video"}`}>
                     {selectedMode === "audio" ? "Audio" : "Video"}
@@ -94,7 +89,6 @@ function App() {
                   <div key={probeInfo?.id ?? "empty"} className="animate-fade-in">
                     {probeInfo ? <ProbeCard info={probeInfo} /> : <EmptyState />}
                   </div>
-                  <FormatPicker />
                   <WaveformProgress />
                   <MetadataPanel />
                   <LogPanel />
