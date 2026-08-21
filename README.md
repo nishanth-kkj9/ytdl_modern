@@ -1,27 +1,31 @@
 # YTDL Modern
 
-A local YouTube audio/video downloader with a modern web UI.
+Local YouTube audio/video downloader with a web UI. Built with React, Node.js, and yt-dlp.
 
-Paste a YouTube URL, pick your format, and download — powered by yt-dlp under the hood.
+Paste a YouTube link, probe for metadata, pick your format, and download.
 
 ## Features
 
-- **Audio download** — MP3, Opus, M4A, WAV with quality presets
-- **Video download** — MP4, WebM, MKV up to 4K
-- **Metadata embedding** — title, artist, album, cover art baked into files
-- **Format verification** — confirms the output codec matches what you asked for
-- **Live progress** — real-time speed, ETA, and waveform animation
-- **Download queue** — multiple concurrent downloads with cancel/retry
-- **History** — persistent download log with file open/reveal
+- **Probe** — fetch title, uploader, duration, thumbnail, and available formats before downloading
+- **Audio** — MP3, Opus, M4A/AAC, WAV with quality presets (maximum / high / medium / low)
+- **Video** — MP4, WebM, MKV with resolution presets (4K, 1080p, 720p, 480p, 360p)
+- **Metadata** — embeds title, artist, album, date, genre, description, and cover art into files
+- **Format verification** — post-download readback confirms the output codec matches what you requested
+- **Cover art** — fetches the highest-resolution YouTube thumbnail and embeds it automatically
+- **Download queue** — multiple concurrent downloads (up to 5 workers) with cancel and retry
+- **Live progress** — real-time speed, ETA, and animated waveform bars
+- **History** — persistent download log (capped at 100 records) with file open/reveal
+- **Bot-detection bypass** — uses multiple YouTube player clients (iOS, Android, web) for reliable extraction
 - **Engine logs** — live event panel for debugging
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React 19, TypeScript, Zustand, Tailwind CSS v4 |
+| Frontend | React 19, TypeScript, Zustand, Tailwind CSS v4, Vite |
 | Backend | Node.js, Express, WebSocket |
 | Engine | Python 3, yt-dlp, mutagen, FFmpeg |
+| Optional | Deno (JS runtime for yt-dlp extraction) |
 
 ## Quick Start
 
@@ -29,7 +33,7 @@ Paste a YouTube URL, pick your format, and download — powered by yt-dlp under 
 
 - **Node.js** 18+
 - **Python** 3.9+
-- **FFmpeg** (on PATH or set `FFMPEG_PATH`)
+- **FFmpeg** — must be on PATH, or set `FFMPEG_PATH` / `FFMPEG_HOME` env var
 
 ### Install
 
@@ -40,8 +44,14 @@ npm install
 # Backend
 cd web && npm install && cd ..
 
-# Python engine
+# Python engine (pinned versions with hashes)
 pip install -r python-engine/requirements.lock
+```
+
+Or install from unpinned ranges:
+
+```bash
+pip install -r python-engine/requirements.txt
 ```
 
 ### Run
@@ -49,24 +59,38 @@ pip install -r python-engine/requirements.lock
 ```bash
 # Build frontend + start server
 npm run build && npm run server
-# → http://127.0.0.1:3000
+# -> http://127.0.0.1:3000
 ```
 
-For development with hot-reload:
+### Development
 
 ```bash
-npm run server    # backend on :3000
-npm run dev       # frontend on :5173 (proxies API to :3000)
+# Terminal 1 — backend (auto-restart via --watch)
+cd web && npm run dev
+
+# Terminal 2 — frontend with HMR
+npm run dev
+# -> http://127.0.0.1:5173
 ```
+
+The Vite dev server proxies `/api`, `/downloads`, and `/ws` to the backend on port 3000.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Vite dev server with HMR |
-| `npm run build` | Type-check + production build |
-| `npm run server` | Start the Node.js backend |
-| `npm run test:smoke` | Smoke tests against a running server |
+| `npm run build` | Type-check + production build to `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run server` | Start the Node.js backend on `:3000` |
+| `npm run test:smoke` | Run smoke tests against a running server |
+
+Inside `web/`:
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Start the server |
+| `npm run dev` | Start with file watching (auto-restart) |
 
 ## API
 
@@ -74,12 +98,12 @@ All endpoints are local-only (`127.0.0.1:3000`).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/health` | `{ "ok": true }` |
+| `GET` | `/api/health` | Returns `{ "ok": true }` |
 | `GET` | `/api/status` | Engine readiness + download directory |
-| `POST` | `/api/probe` | Fetch video metadata before downloading |
+| `POST` | `/api/probe` | Fetch video metadata (result via WebSocket) |
 | `POST` | `/api/download` | Start a download |
 | `POST` | `/api/download/cancel` | Cancel an active download |
-| `GET` | `/api/history` | List download history |
+| `GET` | `/api/history` | List download history (max 100) |
 | `POST` | `/api/history` | Save a history record |
 | `DELETE` | `/api/history` | Clear all history |
 
@@ -89,8 +113,8 @@ All endpoints are local-only (`127.0.0.1:3000`).
 curl -X POST http://127.0.0.1:3000/api/probe \
   -H "Content-Type: application/json" \
   -d '{"url": "https://youtube.com/watch?v=dQw4w9WgXcQ"}'
-# → { "id": "uuid" }
-# Result arrives over WebSocket as probe_result
+# -> { "id": "uuid" }
+# Actual result arrives over WebSocket as probe_result
 ```
 
 ### Download
@@ -104,52 +128,114 @@ curl -X POST http://127.0.0.1:3000/api/download \
     "quality": "high",
     "mode": "audio"
   }'
-# → { "id": "..." }
-# Progress/result events arrive over WebSocket
+# -> { "id": "..." }
+# Progress and result events arrive over WebSocket
 ```
+
+**Parameters:**
+
+| Field | Default | Options |
+|-------|---------|---------|
+| `url` | *required* | YouTube URL |
+| `mode` | `"audio"` | `"audio"`, `"video"` |
+| `format` | `"mp3"` | Audio: `mp3`, `opus`, `m4a`, `aac`, `wav` — Video: `mp4`, `webm`, `mkv` |
+| `quality` | `"high"` | Audio: `maximum`, `high`, `medium`, `low` — Video: `maximum`, `best`, `2160p`, `1080p`, `720p`, `480p`, `360p`, `high`, `medium`, `low` |
+| `id` | auto-generated | Client-side ID for tracking |
+
+Optional metadata fields: `title`, `uploader`, `thumbnail`, `duration`, `webpage_url`.
 
 ### WebSocket
 
-Connect to `ws://127.0.0.1:3000/ws` for live events:
+Connect to `ws://127.0.0.1:3000/ws` for live events (server-to-client only):
 
-| Event | Description |
-|-------|-------------|
-| `engine_ready` | Engine started, lists available tools |
-| `probe_result` | Metadata from a probe request |
-| `download_started` | Download acknowledged |
-| `progress` | Bytes downloaded, speed, status |
-| `result` | Download completed or failed |
-| `cancelled` | Download cancelled |
-| `error` | Per-request error with type |
-| `fatal_error` | Engine crashed, cannot recover |
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `engine_ready` | `{ ffmpeg, ffprobe, deno }` | Engine started, lists available tools |
+| `probe_result` | `{ id, success, info }` | Metadata from a probe request |
+| `download_started` | `{ id, url, fmt, quality }` | Download acknowledged by engine |
+| `progress` | `{ id, status, downloaded, total, speed }` | Download progress |
+| `result` | `{ id, success, title, filepath, ... }` | Download completed or failed |
+| `cancelled` | `{ id }` | Download cancelled |
+| `error` | `{ id, error_type, error }` | Per-request error |
+| `fatal_error` | `{ error }` | Engine crashed, cannot recover |
+| `engine_crashed` | `{ exit_code, signal }` | Python process exited unexpectedly |
+| `engine_log` | `{ message }` | Raw engine output |
 
 ## Architecture
 
 ```
-Browser ─── HTTP + WebSocket ──▶ Node.js (Express)
-                                   │
-                                   ▼
-                              Python engine (yt-dlp + FFmpeg)
+Browser --- HTTP + WebSocket ---> Node.js (Express, port 3000)
+                                    |
+                                    |-- URL validation
+                                    |-- REST routes (probe, download, history, status)
+                                    |-- WebSocket event broadcast
+                                    +-- EngineManager
+                                          | NDJSON stdin/stdout
+                                          v
+                                    Python IPC (ipc_main.py)
+                                          |
+                                          +-- ThreadPoolExecutor (5 workers)
+                                          +-- AudioDownloadEngine (engine.py)
+                                                |-- yt-dlp for extraction
+                                                |-- mutagen for metadata
+                                                +-- FFmpeg for audio/video processing
 ```
-
-The backend validates all input, manages the Python child process, and relays events to the browser over WebSocket. The Python engine handles download orchestration, metadata embedding, and format verification.
 
 ## Security
 
-- Localhost-only binding by default
-- Host-header validation (DNS rebinding protection)
-- YouTube URL allowlist — only youtube.com/youtu.be accepted
-- Output directory containment with symlink resolution
-- Thumbnail fetch restricted to YouTube CDN domains
-- TLS certificate verification enabled by default
-- Bounded concurrent downloads (5 workers max)
+| Control | Detail |
+|---------|--------|
+| Localhost binding | Binds to `127.0.0.1` by default — not accessible from the network |
+| Host header validation | Rejects requests with invalid `Host` header (DNS rebinding protection) |
+| YouTube URL allowlist | Only `youtube.com` and `youtu.be` URLs are accepted |
+| Output directory containment | Resolves symlinks and verifies the output path stays within `downloads/` |
+| SSRF protection | Thumbnail and download URLs are restricted to YouTube CDN domains |
+| TLS verification | Certificate verification is never disabled |
+| Bounded concurrency | Max 5 simultaneous downloads |
+| Input length limits | Title capped at 500 chars, uploader at 256, thumbnail URL at 500 |
+| JSON body limit | Express request body capped at 1 MB |
+| No command injection | WebSocket is one-way (server to client) — no incoming commands accepted |
+| Windows reserved names | Filenames containing CON, PRN, AUX, NUL, COM1-9, LPT1-9 are sanitized |
 
 ## CI/CD
 
 GitHub Actions in `.github/workflows/`:
 
-- **`ci.yml`** — Lint, type-check, build, Python tests, smoke tests on every push/PR
-- **`release.yml`** — Build + publish release archive on `v*` tags
+### `ci.yml` (runs on push/PR to main)
+
+1. **Frontend** — install, type-check (`tsc --noEmit`), Vite production build
+2. **Backend** — install, syntax check all `.mjs` files with `node --check`
+3. **Python** — install from lock file, compile check, import check, pytest
+4. **Smoke** — starts the server, runs `test-smoke.mjs` (health, status, history, probe validation, DNS rebinding test)
+
+### `release.yml` (runs on `v*` tags)
+
+Builds frontend, creates release archive (tar.gz + zip), publishes a GitHub Release.
+
+## Project Structure
+
+```
+ytdl_modern/
+  src/                    # React frontend
+    components/           # UI components
+    api/transport.ts      # REST + WebSocket transport
+    stores/               # Zustand state management
+    hooks/                # WebSocket event handler
+  web/                    # Node.js backend
+    routes/               # Express route handlers
+    services/             # Engine manager, history persistence
+    config.mjs            # Server configuration
+    server.mjs            # HTTP + WebSocket bootstrap
+  python-engine/          # Python download engine
+    engine.py             # yt-dlp + mutagen core
+    ipc_main.py           # NDJSON IPC + command dispatch
+    helpers.py            # Filename sanitizer, formatters
+    logger.py             # File logging with rotation
+    tests/                # Engine unit tests
+  dist/                   # Built frontend output
+  downloads/              # Downloaded media files
+  logs/                   # Python engine logs
+```
 
 ## License
 
