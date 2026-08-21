@@ -99,7 +99,18 @@ export class EngineManager {
   maybeRestart() {
     if (this.restartAttempts >= config.engineMaxRestarts) {
       this.fatalError = true;
+      // Emit a terminal error for each pending command before discarding
+      const pending = this.pendingCommands;
       this.pendingCommands = [];
+      for (const cmd of pending) {
+        const id = cmd.id || "";
+        this.bus.emit("error", {
+          type: "error",
+          id,
+          error_type: "EngineFatalError",
+          error: "Engine crashed and could not be restarted.",
+        });
+      }
       this.bus.emit("fatal_error", {
         error: "Engine crashed and could not be restarted.",
       });

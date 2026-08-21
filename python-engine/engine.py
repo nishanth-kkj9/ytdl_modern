@@ -973,9 +973,7 @@ class AudioDownloadEngine:
             "socket_timeout": 20,
             "retries":        5,
             "extractor_retries": 3,
-            "nocheckcertificate": True,
             "geo_bypass": True,
-            "prefer_insecure": True,
         }
         if self._deno_bin:
             opts["js_runtimes"] = {"deno": {"path": self._deno_bin}}
@@ -1036,9 +1034,7 @@ class AudioDownloadEngine:
             "quiet":              True,
             "no_warnings":        True,
             "noplaylist":         True,
-            "nocheckcertificate": True,
             "geo_bypass":         True,
-            "prefer_insecure":    True,
             "socket_timeout":     30,
             "retries":            10,
             "fragment_retries":   10,

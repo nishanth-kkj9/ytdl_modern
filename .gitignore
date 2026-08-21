@@ -41,3 +41,7 @@ python-engine/binaries
 .venv
 venv/
 .env
+*.egg-info
+
+# Tool artifacts
+repomix-output.xml

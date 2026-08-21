@@ -5,13 +5,14 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   build:
     name: Build & Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +48,7 @@ jobs:
           zip -r ytdl-modern-${{ github.ref_name }}.zip ytdl-modern/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: ${{ github.ref_name }}
           draft: false
@@ -59,11 +60,11 @@ jobs:
             ## YTDL Modern ${{ github.ref_name }}
 
             ### What's New
-            - See the [CHANGELOG](CHANGELOG.md) for details.
+            - See the [README](README.md) for setup and usage details.
 
             ### Installation
             1. Extract the archive to your desired location.
-            2. Install Python deps: `pip install -r python-engine/requirements.txt`
+            2. Install Python deps: `pip install -r python-engine/requirements.lock`
             3. Install Node deps: `cd web && npm install`
             4. Start the server: `npm run server`
             5. Open http://127.0.0.1:3000 in your browser.

@@ -84,7 +84,7 @@ Browser ──HTTP/WS──▶ Node.js server (web/server.mjs)
 - **Node.js** 18+ (for the web server and frontend build)
 - **Python** 3.9+ (for the download engine)
 - **FFmpeg** (required for audio extraction and video merging)
-- **Python deps** (`pip install -r python-engine/requirements.txt`)
+- **Python deps** (`pip install -r python-engine/requirements.lock`)
 
 ### Setup
 
@@ -97,7 +97,7 @@ cd web && npm install
 cd ..
 
 # 3. Install Python deps
-pip install -r python-engine/requirements.txt
+pip install -r python-engine/requirements.lock
 
 # 4. Build the frontend (once)
 npm run build
@@ -139,8 +139,7 @@ Returns server + engine status:
 {
   "server": "ytdl-modern-web",
   "engineReady": true,
-  "downloadDir": "d:/my_projects/ytdl_modern/downloads",
-  "engineEntry": "d:/my_projects/ytdl_modern/python-engine/ipc_main.py"
+  "downloadDir": "d:/my_projects/ytdl_modern/downloads"
 }
 ```
 

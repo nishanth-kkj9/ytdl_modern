@@ -13,7 +13,6 @@ export function statusRouter(engineManager) {
       server: "ytdl-modern-web",
       engineReady: engineManager.isReady(),
       downloadDir: config.downloadsDir,
-      engineEntry: config.engineEntry,
     });
   });
 

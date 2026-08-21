@@ -77,7 +77,7 @@ jobs:
 
       - name: Install Python deps
         run: |
-          pip install -r python-engine/requirements.txt
+          pip install -r python-engine/requirements.lock
 
       - name: Install test runner
         run: |
