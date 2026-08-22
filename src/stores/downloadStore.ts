@@ -2,9 +2,10 @@ import { invoke } from "../api/transport";
 import { create } from "zustand";
 import { DownloadItem, HistoryItem, MetadataResult, ProbeInfo } from "../types";
 
-// Generate a unique ID (timestamp + random suffix to avoid collisions).
+// Generate a unique ID (crypto.randomUUID is collision-free and available in
+// all modern browsers).
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return crypto.randomUUID();
 }
 
 export interface LogEntry {

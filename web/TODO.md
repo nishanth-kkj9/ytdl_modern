@@ -9,7 +9,7 @@ features is easy.
 ```
 Browser ──HTTP/WS──▶ Node.js server (web/server.mjs)
                       ├── serves built React frontend (dist/)
-                      ├── REST API: /api/probe, /api/download, /api/cancel, /api/history, /api/status
+                      ├── REST API: /api/probe, /api/download, /api/download/cancel, /api/history, /api/status
                       ├── WebSocket: /ws → live engine events
                       └── spawns Python engine (python-engine/ipc_main.py) as child process
 ```
@@ -20,7 +20,7 @@ Browser ──HTTP/WS──▶ Node.js server (web/server.mjs)
 - [x] web/services/historyService.mjs — swappable storage (JSON default)
 - [x] web/services/engineManager.mjs — spawn/manage Python engine, NDJSON bridge
 - [x] web/routes/probe.mjs — POST /api/probe
-- [x] web/routes/download.mjs — POST /api/download, POST /api/cancel
+- [x] web/routes/download.mjs — POST /api/download, POST /api/download/cancel
 - [x] web/routes/history.mjs — GET/POST /api/history
 - [x] web/routes/status.mjs — GET /api/status
 - [x] web/middleware/static.mjs — static file serving

@@ -10,6 +10,7 @@ import { downloadRouter } from "./routes/download.mjs";
 import { historyRouter } from "./routes/history.mjs";
 import { statusRouter } from "./routes/status.mjs";
 import { staticMiddleware } from "./middleware/static.mjs";
+import { rateLimit, originCheck } from "./middleware/security.mjs";
 
 async function main() {
   // ── Core services ───────────────────────────────────────────────────────
@@ -25,6 +26,9 @@ async function main() {
   // Reject requests with unexpected Host headers (DNS rebinding protection).
   // A local server must only be reachable via 127.0.0.1/localhost — an
   // attacker-controlled domain resolving to 127.0.0.1 must not pass.
+  // NOTE: This allowlist is intentionally localhost-only. If `HOST` is
+  // overridden to expose the server on a LAN, LAN clients' Host headers will
+  // be rejected with 421 — the server is designed to be local-hosted.
   const allowedHosts = new Set([
     `127.0.0.1:${config.port}`,
     `localhost:${config.port}`,
@@ -40,9 +44,12 @@ async function main() {
   });
 
   // API routes (modular — add feature routes here).
-  app.use("/api/probe", probeRouter(engine));
-  app.use("/api/download", downloadRouter(engine));
-  app.use("/api/history", historyRouter(historyService));
+  // Mutating endpoints are rate-limited and origin-checked to prevent a local
+  // process or compromised browser tab from flooding the engine, and to block
+  // cross-site requests (defense-in-depth on top of the JSON-only body parsing).
+  app.use("/api/probe", originCheck(), rateLimit({ maxRequests: 10, windowMs: 10_000 }), probeRouter(engine));
+  app.use("/api/download", originCheck(), rateLimit({ maxRequests: 5, windowMs: 10_000 }), downloadRouter(engine));
+  app.use("/api/history", originCheck(), historyRouter(historyService));
   app.use("/api/status", statusRouter(engine));
 
   // Health check.

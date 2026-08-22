@@ -104,7 +104,10 @@ export function useEngineEvents() {
             const fmt = String(payload.fmt ?? "");
             const resolvedType = ["mp4", "webm", "mkv"].includes(fmt.toLowerCase()) ? "video" : "audio";
             let filepath = String(payload.filepath ?? "");
-            if (filepath && !/^[A-Za-z]:\\/.test(filepath) && downloadBaseRef.current) {
+            // Detect absolute paths generically (Windows drive letter or POSIX
+            // leading slash) so we don't double-prefix the project root.
+            const isAbsolute = /^[A-Za-z]:[\\/]/.test(filepath) || filepath.startsWith("/");
+            if (filepath && !isAbsolute && downloadBaseRef.current) {
               filepath = downloadBaseRef.current + "/" + filepath.replace(/\\/g, "/");
             }
             updateQueueItem(id, {

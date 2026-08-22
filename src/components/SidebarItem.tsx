@@ -3,6 +3,18 @@ import { openPath, revealItemInDir } from "../api/transport";
 import { useDownloadStore } from "../stores/downloadStore";
 import { DownloadItem, HistoryItem } from "../types";
 
+// Only render thumbnails from YouTube's known CDN domains (defense-in-depth;
+// the server already enforces this via _is_safe_thumbnail_url).
+const SAFE_THUMBNAIL_HOSTS = [".ytimg.com", ".googleusercontent.com", ".googlevideo.com", ".youtube.com"];
+function isSafeThumbnail(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return SAFE_THUMBNAIL_HOSTS.some((h) => host.endsWith(h));
+  } catch {
+    return false;
+  }
+}
+
 interface SidebarItemProps {
   item: DownloadItem | HistoryItem;
   isActive?: boolean;
@@ -61,7 +73,7 @@ export function SidebarItem({ item, isActive }: SidebarItemProps) {
       } ${flashClass}`}
     >
       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-raised ring-1 ring-border/40">
-        {thumbnailUrl && !imgError ? (
+        {thumbnailUrl && isSafeThumbnail(thumbnailUrl) && !imgError ? (
           <img
             src={thumbnailUrl}
             alt=""

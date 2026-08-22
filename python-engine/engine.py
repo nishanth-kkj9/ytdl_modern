@@ -1,6 +1,6 @@
 """
-ytdl_pro_pyqt6.engine  (v4)
-───────────────────────────
+ytdl_modern.engine  (v4)
+────────────────────────
 Self-contained audio download engine.
 
 Improvements over v3:
@@ -31,6 +31,7 @@ import sys
 import time
 import threading
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from dataclasses import dataclass, field, asdict
 from typing import Callable, Optional
@@ -290,7 +291,9 @@ def _best_thumbnail_url(info: dict) -> str:
     ):
         return direct_url if _is_safe_thumbnail_url(direct_url) else ""
 
-    # Strategy 1: probe YouTube's standard thumbnail URL hierarchy (max 3 s each)
+    # Strategy 1: probe YouTube's standard thumbnail URL hierarchy (max 3 s each).
+    # The HEAD requests run concurrently so the total latency is bounded by the
+    # slowest single request (~3s) rather than the sum of all candidates (~12s).
     if vid_id:
         candidates = [
             f"https://i.ytimg.com/vi/{vid_id}/maxresdefault.jpg",
@@ -298,15 +301,21 @@ def _best_thumbnail_url(info: dict) -> str:
             f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
             f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg",
         ]
-        for url in candidates:
+
+        def _head_ok(url: str) -> bool:
             try:
                 req = urllib.request.Request(url, method="HEAD",
                     headers={"User-Agent": "Mozilla/5.0"})
-                resp = urllib.request.urlopen(req, timeout=3)   # was 5
-                if resp.status == 200:
-                    return url
+                resp = urllib.request.urlopen(req, timeout=3)
+                return resp.status == 200
             except Exception:
-                continue
+                return False
+
+        with ThreadPoolExecutor(max_workers=len(candidates)) as pool:
+            results = list(pool.map(_head_ok, candidates))
+        for url, ok in zip(candidates, results):
+            if ok:
+                return url
 
     # Strategy 2: sorted thumbnails list
     thumbs = info.get("thumbnails") or []
@@ -1125,6 +1134,9 @@ class AudioDownloadEngine:
         self._hook_filepath = None
         self._ydl_pre_path  = None
         self._tracker       = _SpeedTracker()
+        # Record when this download started so the filepath fallback can prefer
+        # files created during this download rather than an unrelated file.
+        self._download_started = time.monotonic()
 
         applog.log_download_start(url, self.audio_format, self.quality)
 
@@ -1342,16 +1354,22 @@ class AudioDownloadEngine:
         if os.path.exists(computed):
             return computed
 
-        # 3. Scan downloads dir for newest matching extension
+        # 3. Scan downloads dir for a matching-extension file created during
+        #    this download. Prefer files newer than the download start time so
+        #    concurrent same-format downloads don't resolve to the wrong file.
         try:
             files = os.listdir(self.output_dir)
+            start_mtime = self._download_started
             matches = [
                 os.path.join(self.output_dir, f)
                 for f in files
                 if f.lower().endswith(f".{ext}")
             ]
             if matches:
-                return max(matches, key=os.path.getmtime)
+                # Prefer files created after this download started.
+                recent = [m for m in matches if os.path.getmtime(m) >= start_mtime]
+                pool = recent or matches
+                return max(pool, key=os.path.getmtime)
         except OSError:
             pass
 

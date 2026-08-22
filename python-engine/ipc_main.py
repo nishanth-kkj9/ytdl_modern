@@ -45,6 +45,9 @@ _LOCK = threading.Lock()
 # Bound concurrent downloads — yt-dlp + ffmpeg are CPU/I/O heavy, and more
 # than a handful at once degrades the whole system.
 _EXECUTOR = ThreadPoolExecutor(max_workers=5)
+# Bound concurrent probes — each probe does network I/O (yt-dlp extraction
+# with retries), so unbounded threads would exhaust system resources.
+_PROBE_EXECUTOR = ThreadPoolExecutor(max_workers=2)
 
 
 def _write_message(message: dict[str, Any]) -> None:
@@ -128,13 +131,7 @@ def _probe(url: str, id_: str) -> None:
         _write_error(id_, "ProbeError", f"{type(exc).__name__}: {exc}")
 
 
-def _run_download(id_: str, url: str, audio_format: str, quality: str, output_dir: str, mode: str) -> None:
-    cancel_event = threading.Event()
-    with _LOCK:
-        _DOWNLOAD_JOBS[id_] = {
-            "cancel_event": cancel_event,
-        }
-
+def _run_download(id_: str, url: str, audio_format: str, quality: str, output_dir: str, mode: str, cancel_event: threading.Event) -> None:
     def progress_cb(status: str, downloaded: int, total: int, speed: float, filename: str) -> None:
         _write_progress(id_, status, downloaded, total, speed, filename)
 
@@ -197,13 +194,20 @@ def _start_download(command: dict[str, Any]) -> None:
         _write_error(id_, "InvalidCommand", "download command requires 'id' and 'url'")
         return
 
+    # Register the job synchronously under the lock, BEFORE submitting to the
+    # executor. This closes the duplicate-ID race: two rapid same-ID commands
+    # can no longer both pass the check before either is registered.
+    cancel_event = threading.Event()
     with _LOCK:
         if id_ in _DOWNLOAD_JOBS:
             _write_error(id_, "DuplicateId", f"Download id '{id_}' is already active")
             return
+        _DOWNLOAD_JOBS[id_] = {"cancel_event": cancel_event}
 
     resolved_output = _resolve_output_dir(output_dir)
     if resolved_output is None:
+        with _LOCK:
+            _DOWNLOAD_JOBS.pop(id_, None)
         _write_error(
             id_,
             "InvalidPath",
@@ -213,7 +217,7 @@ def _start_download(command: dict[str, Any]) -> None:
     output_dir = resolved_output
 
     os.makedirs(output_dir, exist_ok=True)
-    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode)
+    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode, cancel_event)
     _write_message({
         "type": "download_started",
         "id": id_,
@@ -253,8 +257,7 @@ def _handle_command(command: dict[str, Any]) -> None:
         if not id_ or not url:
             _write_error(id_, "InvalidCommand", "probe command requires 'id' and 'url'")
             return
-        thread = threading.Thread(target=_probe, args=(url, id_), daemon=True)
-        thread.start()
+        _PROBE_EXECUTOR.submit(_probe, url, id_)
     elif cmd == "cancel":
         _cancel(command)
     else:
@@ -286,6 +289,7 @@ def main() -> None:
     # stdin closed — stop accepting work. wait=False so the process can exit
     # even with in-flight downloads (workers are non-daemon by default).
     _EXECUTOR.shutdown(wait=False)
+    _PROBE_EXECUTOR.shutdown(wait=False)
 
 
 if __name__ == "__main__":

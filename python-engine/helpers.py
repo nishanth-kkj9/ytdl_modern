@@ -1,7 +1,7 @@
 """
-ytdl_pro_pyqt6.helpers  (v12)
-──────────────────────────────
-Widget factories, string formatting, platform-aware file opener.
+ytdl_modern.helpers  (v12)
+──────────────────────────
+String formatting, filename sanitization, platform-aware file opener.
 
 IMPROVEMENTS vs v8:
   • format_size() handles negative values gracefully (returns "—").

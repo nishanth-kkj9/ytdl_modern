@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { FormatInfo, ProbeInfo } from "../types";
 
+// Only render thumbnails from YouTube's known CDN domains (defense-in-depth;
+// the server already enforces this via _is_safe_thumbnail_url).
+const SAFE_THUMBNAIL_HOSTS = [".ytimg.com", ".googleusercontent.com", ".googlevideo.com", ".youtube.com"];
+function isSafeThumbnail(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return SAFE_THUMBNAIL_HOSTS.some((h) => host.endsWith(h));
+  } catch {
+    return false;
+  }
+}
+
 function fmtDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -70,7 +82,7 @@ export function ProbeCard({ info }: ProbeCardProps) {
             style={{ aspectRatio: "16 / 9" }}
             aria-hidden="true"
           />
-          {info.thumbnail && !imgError && (
+          {info.thumbnail && isSafeThumbnail(info.thumbnail) && !imgError && (
             <img
               src={info.thumbnail}
               alt={info.title}

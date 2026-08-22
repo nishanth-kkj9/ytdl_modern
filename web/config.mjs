@@ -24,7 +24,4 @@ export const config = {
   // Engine
   engineCwd: path.join(projectRoot, "python-engine"),
   engineMaxRestarts: 3,
-
-  // Static assets to serve when frontend build is missing
-  fallbackServeDist: true,
 };
