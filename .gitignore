@@ -45,3 +45,6 @@ venv/
 
 # Tool artifacts
 repomix-output.xml
+
+# Review artifacts
+.review/
