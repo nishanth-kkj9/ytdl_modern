@@ -112,29 +112,6 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  .card-raised {
-    background: #1A1A24;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-  }
-
-  .rack-panel {
-    background: linear-gradient(145deg, #101018 0%, #07080C 100%);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 16px;
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.02), 0 4px 16px rgba(0, 0, 0, 0.35);
-  }
-
-  .rack-panel-glow-audio {
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 24px rgba(245, 158, 11, 0.05), 0 4px 16px rgba(0, 0, 0, 0.35);
-    border-color: rgba(245, 158, 11, 0.14);
-  }
-
-  .rack-panel-glow-video {
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 184, 212, 0.05), 0 4px 16px rgba(0, 0, 0, 0.35);
-    border-color: rgba(0, 184, 212, 0.14);
-  }
-
   .btn {
     display: inline-flex;
     align-items: center;
@@ -166,8 +143,8 @@
   }
 
   .btn-audio {
-    background: rgba(245, 158, 11, 0.12);
-    color: #F59E0B;
+    background: var(--color-accent-audio-dim);
+    color: var(--color-accent-audio);
   }
 
   .btn-audio:hover:not(:disabled) {
@@ -175,8 +152,8 @@
   }
 
   .btn-video {
-    background: rgba(0, 184, 212, 0.12);
-    color: #00B8D4;
+    background: var(--color-accent-video-dim);
+    color: var(--color-accent-video);
   }
 
   .btn-video:hover:not(:disabled) {
@@ -225,18 +202,18 @@
   }
 
   .tag-audio {
-    background: rgba(245, 158, 11, 0.12);
-    color: #F59E0B;
+    background: var(--color-accent-audio-dim);
+    color: var(--color-accent-audio);
   }
 
   .tag-video {
-    background: rgba(0, 184, 212, 0.12);
-    color: #00B8D4;
+    background: var(--color-accent-video-dim);
+    color: var(--color-accent-video);
   }
 
   .tag-downloading {
-    background: rgba(0, 184, 212, 0.12);
-    color: #00B8D4;
+    background: var(--color-accent-video-dim);
+    color: var(--color-accent-video);
   }
 
   .tag-queued {
@@ -257,29 +234,6 @@
   .tag-cancelled {
     background: rgba(90, 107, 138, 0.12);
     color: #5A6B8A;
-  }
-
-  .hero-input {
-    width: 100%;
-    padding: 14px 18px;
-    background: #08080D;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    color: #E2E8F0;
-    font-size: 0.9375rem;
-    font-family: "Sora", sans-serif;
-    outline: none;
-    transition: border-color 200ms ease, box-shadow 200ms ease;
-  }
-
-  .hero-input::placeholder {
-    color: #8B9CB8;
-    opacity: 0.6;
-  }
-
-  .hero-input:focus {
-    border-color: rgba(0, 184, 212, 0.3);
-    box-shadow: 0 0 0 4px rgba(0, 184, 212, 0.06), 0 0 30px rgba(0, 184, 212, 0.03);
   }
 
   .input {
@@ -325,6 +279,7 @@
 
   .select-input:focus {
     border-color: rgba(0, 184, 212, 0.3);
+    box-shadow: 0 0 0 3px rgba(0, 184, 212, 0.06);
   }
 
   .progress-bar {
@@ -426,11 +381,6 @@
     background: #FF2D55;
     box-shadow: 0 0 8px rgba(255, 45, 85, 0.7), 0 0 20px rgba(255, 45, 85, 0.3);
     animation: rec-pulse 1.5s ease-in-out infinite;
-  }
-
-  .recording-dot-glow {
-    color: #FF2D55;
-    text-shadow: 0 0 12px rgba(255, 45, 85, 0.35);
   }
 
   .waveform-bars {
@@ -593,7 +543,12 @@
   75% { transform: translateX(4px); }
 }
 
-@keyframes count-up {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
