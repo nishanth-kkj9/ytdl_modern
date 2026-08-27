@@ -20,6 +20,7 @@ _MAX_LOG_BACKUPS = 3
 
 _lock = threading.Lock()
 _log_path: Optional[str] = None
+_log_date: Optional[str] = None
 
 
 def _rotate(path: str) -> None:
@@ -51,13 +52,14 @@ def _rotate(path: str) -> None:
 
 
 def _get_log_path() -> str:
-    global _log_path
-    if _log_path is None:
-        # logs/ folder sits next to run.py
+    global _log_path, _log_date
+    date_tag = datetime.now().strftime("%Y%m%d")
+    if _log_path is None or _log_date != date_tag:
+        # logs/ folder sits next to run.py — re-evaluate on date change (REL-02)
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         logs_dir = os.path.join(project_root, "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        date_tag = datetime.now().strftime("%Y%m%d")
+        _log_date = date_tag
         _log_path = os.path.join(logs_dir, f"ytdl_pro_{date_tag}.log")
     return _log_path
 

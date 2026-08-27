@@ -69,4 +69,63 @@ function collect(bus, event) {
   assert.strictEqual(errors.length, 0, "No errors when pending is empty");
 }
 
+// Test 4: recover() resets the fatal flag and respawns the engine
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.fatalError = true;
+  mgr.restartAttempts = 3;
+  // Prevent an actual spawn during the unit test.
+  let spawned = false;
+  mgr.spawn = () => {
+    spawned = true;
+  };
+  mgr.recover();
+  assert.strictEqual(mgr.fatalError, false, "recover() should clear fatalError");
+  assert.strictEqual(mgr.restartAttempts, 0, "recover() should reset restart attempts");
+  assert.strictEqual(spawned, true, "recover() should respawn the engine");
+  assert.doesNotThrow(
+    () => mgr.sendCommand({ cmd: "probe", id: "req-4", url: "https://example.com" }),
+    "sendCommand should work after recover()"
+  );
+}
+
+// Test 5: pending queue is bounded (backlog cap)
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.child = {};
+  mgr.stdin = null;
+  mgr.ready = false;
+  mgr.maxPendingCommands = 2;
+  mgr.sendCommand({ cmd: "probe", id: "p-1" });
+  mgr.sendCommand({ cmd: "probe", id: "p-2" });
+  // Third queued command should throw because the backlog is full.
+  assert.throws(
+    () => mgr.sendCommand({ cmd: "probe", id: "p-3" }),
+    /backlog full/,
+    "Third queued command should be rejected when the cap is reached"
+  );
+  assert.strictEqual(mgr.pendingCommands.length, 2, "No more than the cap should be queued");
+}
+
+// Test 6: a spawn error routes into the same bounded-restart mechanism that a
+// crash uses, so the engine is not left permanently "starting". Here we verify
+// maybeRestart counts attempts (which the child.on("error") handler now calls).
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.restartAttempts = 0;
+  mgr.stdin = null;
+  mgr.ready = false;
+  // Stub spawn so the 500ms retry timer cannot launch a real child process.
+  mgr.spawn = () => {};
+  const warnings = collect(bus, "engine_crashed");
+  // Emulate what spawn()'s child.on("error") now does: mark down and restart.
+  mgr.ready = false;
+  mgr.maybeRestart();
+  assert.strictEqual(mgr.restartAttempts, 1, "spawn/child error should trigger a restart attempt");
+  assert.strictEqual(warnings.length, 0, "crashes not emitted by a spawn error path");
+}
+
 console.log("All engineManager tests passed.");

@@ -25,10 +25,26 @@ export class EngineManager {
     this.ready = false;
     this.fatalError = false;
     this.pendingCommands = [];
+    // Cap the pending queue so a burst of commands (or a long engine outage)
+    // cannot grow memory unboundedly (mirrors the history 100-record cap).
+    this.maxPendingCommands = config.engineMaxPendingCommands;
+    // Last engine_ready payload — surfaces ffmpeg/ffprobe/deno availability.
+    this.readyTools = null;
   }
 
   start() {
     this.spawn();
+  }
+
+  // Reset a fatal-error state and respawn the engine. Used to recover from
+  // a terminal crash without restarting the whole server.
+  recover() {
+    this.fatalError = false;
+    this.restartAttempts = 0;
+    this.ready = false;
+    this.pendingCommands = [];
+    this.spawn();
+    return true;
   }
 
   spawn() {
@@ -65,7 +81,14 @@ export class EngineManager {
     });
 
     child.on("error", (err) => {
+      this.ready = false;
+      this.child = null;
+      this.stdin = null;
       this.bus.emit("engine_error", { error: `Engine spawn failed: ${err.message}` });
+      // Treat a spawn failure like a crash so the bounded-restart logic can
+      // recover (e.g. when Python is temporarily unavailable) instead of
+      // leaving the engine stuck in a permanent "starting" state.
+      this.maybeRestart();
     });
 
     child.on("exit", (code, signal) => {
@@ -84,6 +107,11 @@ export class EngineManager {
       case "engine_ready":
         this.ready = true;
         this.restartAttempts = 0;
+        this.readyTools = {
+          ffmpeg: Boolean(msg.ffmpeg),
+          ffprobe: Boolean(msg.ffprobe),
+          deno: Boolean(msg.deno),
+        };
         this.bus.emit("engine_ready", msg);
         // Flush any commands that were queued while the engine was starting.
         this.flushPending();
@@ -125,12 +153,32 @@ export class EngineManager {
     if (this.fatalError) {
       throw new Error("Engine is in fatal error state");
     }
+    // Bound the pending queue — reject new commands if the engine is down and
+    // the backlog is already large, so a burst cannot grow memory unboundedly.
     if (!this.stdin || this.stdin.destroyed) {
+      if (this.pendingCommands.length >= this.maxPendingCommands) {
+        throw new Error("Engine backlog full, try again shortly");
+      }
       // Queue the command — the engine may still be starting up.
       this.pendingCommands.push(command);
       return;
     }
-    this.stdin.write(JSON.stringify(command) + "\n");
+    this._writeCommand(command);
+  }
+
+  // Backpressure-aware write: if the pipe's buffer is full (write returns
+  // false), queue the command and resume on the 'drain' event instead of
+  // accumulating an unbounded kernel buffer.
+  _writeCommand(command) {
+    if (!this.stdin || this.stdin.destroyed) {
+      this.pendingCommands.push(command);
+      return;
+    }
+    const ok = this.stdin.write(JSON.stringify(command) + "\n");
+    if (!ok) {
+      // Resume writing queued commands once the outgoing buffer drains.
+      this.stdin.once("drain", () => this.flushPending());
+    }
   }
 
   flushPending() {
@@ -138,12 +186,18 @@ export class EngineManager {
     const pending = this.pendingCommands;
     this.pendingCommands = [];
     for (const cmd of pending) {
-      this.stdin.write(JSON.stringify(cmd) + "\n");
+      this._writeCommand(cmd);
     }
   }
 
   isReady() {
     return !!this.child && this.ready;
+  }
+
+  // Expose cached tool availability (ffmpeg/ffprobe/deno) from the last
+  // engine_ready message, or null if the engine hasn't reported readiness.
+  getTools() {
+    return this.readyTools;
   }
 
   stop() {

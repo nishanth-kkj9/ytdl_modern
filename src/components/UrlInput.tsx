@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDownloadStore } from "../stores/downloadStore";
 
-const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(watch\?v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}/i;
+const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])/i;
 
 const audioFormats = [
   { value: "mp3", label: "MP3" },

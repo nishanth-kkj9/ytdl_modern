@@ -10,9 +10,10 @@ export function staticMiddleware(config) {
   const router = express.Router();
 
   // Serve downloaded media files by filename.
+  // Hardened: no fallthrough to SPA, no dotfiles, no index (SEC-01).
   router.use(
     "/downloads",
-    express.static(config.downloadsDir, { fallthrough: true })
+    express.static(config.downloadsDir, { fallthrough: false, dotfiles: "deny", index: false, maxAge: "1h" })
   );
 
   // Serve the built React frontend if present.

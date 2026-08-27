@@ -96,6 +96,8 @@ export async function invoke<T = any>(command: string, args?: Record<string, any
       });
     case "cancel_download":
       return webFetch(`${base}/api/download/cancel`, "POST", { id: args?.id });
+    case "restart_engine":
+      return webFetch(`${base}/api/engine/restart`, "POST", {});
     case "get_download_dir":
       return webFetch(`${base}/api/status`, "GET").then((s) => s.downloadDir);
     case "save_history":

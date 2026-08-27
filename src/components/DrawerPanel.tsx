@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDownloadStore } from "../stores/downloadStore";
 import { SidebarItem } from "./SidebarItem";
 
@@ -17,16 +17,35 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
   const clearHistory = useDownloadStore((s) => s.clearHistory);
 
   const active = queue.filter((i) => i.status === "downloading" || i.status === "queued");
+  const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) triggerRef?.current?.focus();
   }, [open, triggerRef]);
 
-  // Close on Escape key when open.
+  // Close on Escape + focus trap when open.
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && asideRef.current) {
+        const nodes = asideRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (nodes.length === 0) return;
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -45,6 +64,7 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
         onClick={onClose}
       />
       <aside
+        ref={asideRef}
         id="queue-history-drawer"
         role="dialog"
         aria-modal={open ? "true" : undefined}

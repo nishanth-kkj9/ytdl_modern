@@ -79,12 +79,12 @@ export function SidebarItem({ item, isActive }: SidebarItemProps) {
           <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-raised">
             <div
               className="h-full rounded-full bg-accent-audio transition-all duration-300"
-              style={{ width: `${Math.min(progress, 100)}%` }}
+              style={{ width: `${Math.min((progress ?? 0) * 100, 100)}%` }}
             />
           </div>
         )}
 
-        <div className={`mt-1 flex items-center gap-1 ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"} transition`}>
+        <div className={`mt-1 flex items-center gap-1 transition ${isActive ? "opacity-100" : "opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"}`}>
           {hasFilepath && (
             <>
               <button

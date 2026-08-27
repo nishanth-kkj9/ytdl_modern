@@ -9,6 +9,8 @@ function generateId(): string {
 }
 
 export interface LogEntry {
+  /** Monotonic id — used as a stable React key (was array index). */
+  _seq: number;
   message: string;
   level: "info" | "warn" | "error";
 }
@@ -36,10 +38,13 @@ interface DownloadState {
   statusMessage: string;
   logs: LogEntry[];
   metadataResult: MetadataResult | null;
+  /** Monotonic counter backing LogEntry._seq (stable React keys). */
+  _logSeq: number;
   enqueueDownload: (url: string, format: string, quality: string, type: "audio" | "video", meta?: Metadata) => Promise<void>;
   startDownload: (id: string, meta?: Metadata) => Promise<void>;
   cancelDownload: (id: string) => Promise<void>;
   retryDownload: (id: string) => Promise<void>;
+  restartEngine: () => Promise<void>;
   probeUrl: (url: string) => Promise<void>;
   setSelectedMode: (mode: "audio" | "video") => void;
   setSelectedFormat: (format: string) => void;
@@ -66,6 +71,9 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   statusMessage: "",
   logs: [],
   metadataResult: null,
+  // Monotonic counter backing LogEntry._seq (never reset, so keys stay unique
+  // even after the log list is trimmed by the 50-entry cap).
+  _logSeq: 0,
 
   enqueueDownload: async (url, format, quality, type, meta) => {
     set({ statusMessage: "Queuing download..." });
@@ -154,6 +162,17 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     await get().startDownload(id, meta);
   },
 
+  restartEngine: async () => {
+    set({ statusMessage: "Restarting engine...", engineStatus: "starting" });
+    try {
+      await invoke("restart_engine");
+      get().addLog("Engine restart requested");
+    } catch (error) {
+      get().addLog(`restart_engine error: ${String(error)}`, "error");
+      set({ statusMessage: "Engine restart failed." });
+    }
+  },
+
   probeUrl: async (url) => {
     set({ statusMessage: "Probing URL...", probeInfo: null, probeError: null });
     try {
@@ -175,7 +194,13 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   setProbeInfo: (info) => set({ probeInfo: info, probeError: null }),
   setEngineStatus: (engineStatus) => set({ engineStatus }),
   setMetadataResult: (result) => set({ metadataResult: result }),
-  addLog: (message, level = "info") => set((state) => ({ logs: [{ message, level }, ...state.logs].slice(0, 50) })),
+  addLog: (message, level = "info") => set((state) => {
+    const seq = state._logSeq + 1;
+    return {
+      _logSeq: seq,
+      logs: [{ _seq: seq, message, level }, ...state.logs].slice(0, 50),
+    };
+  }),
   updateQueueItem: (id, patch) => set((state) => ({
     queue: state.queue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
   })),

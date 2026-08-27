@@ -25,6 +25,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Audit frontend deps
+        run: npm audit --audit-level=moderate || true
+
       - name: Build frontend
         run: npm run build
 
@@ -64,6 +67,10 @@ jobs:
       - name: Syntax check middleware
         run: node --check web/middleware/static.mjs
 
+      - name: Audit backend deps
+        run: npm audit --audit-level=moderate || true
+        working-directory: web
+
       - name: Run backend unit tests
         working-directory: web
         run: |
@@ -88,7 +95,10 @@ jobs:
 
       - name: Install test runner
         run: |
-          pip install pytest
+          pip install pytest pip-audit
+
+      - name: Audit Python deps
+        run: pip-audit -r python-engine/requirements.lock || true
 
       - name: Syntax check Python files
         run: |

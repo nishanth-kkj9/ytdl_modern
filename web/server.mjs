@@ -9,6 +9,7 @@ import { probeRouter } from "./routes/probe.mjs";
 import { downloadRouter } from "./routes/download.mjs";
 import { historyRouter } from "./routes/history.mjs";
 import { statusRouter } from "./routes/status.mjs";
+import { restartRouter } from "./routes/restart.mjs";
 import { staticMiddleware } from "./middleware/static.mjs";
 import { rateLimit, originCheck } from "./middleware/security.mjs";
 
@@ -51,6 +52,7 @@ async function main() {
   app.use("/api/download", originCheck(), rateLimit({ maxRequests: 5, windowMs: 10_000 }), downloadRouter(engine));
   app.use("/api/history", originCheck(), historyRouter(historyService));
   app.use("/api/status", statusRouter(engine));
+  app.use("/api/engine/restart", originCheck(), rateLimit({ maxRequests: 5, windowMs: 10_000 }), restartRouter(engine));
 
   // Health check.
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -97,6 +99,11 @@ async function main() {
         payload: { ready: engine.isReady() },
       })
     );
+    // Track liveness so stale/half-open connections are cleaned up.
+    socket.isAlive = true;
+    socket.on("pong", () => {
+      socket.isAlive = true;
+    });
     // Note: The WebSocket is strictly for server → client event broadcasting.
     // Incoming commands are NOT accepted here — all mutating operations
     // (probe, download, cancel) go through the validated REST API routes.
@@ -105,12 +112,34 @@ async function main() {
     // arbitrary file writes via the Python engine.
   });
 
+  // ── WebSocket heartbeat ─────────────────────────────────────────────────────
+  // Terminate clients that miss two consecutive heartbeats so half-open
+  // connections don't accumulate. The timer is unref'd so it never blocks
+  // process exit.
+  const HEARTBEAT_INTERVAL_MS = 30_000;
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!client.isAlive) {
+        client.terminate();
+        continue;
+      }
+      client.isAlive = false;
+      try {
+        client.ping();
+      } catch {
+        client.terminate();
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref();
+
   // ── Start engine ────────────────────────────────────────────────────────
   engine.start();
 
   // ── Graceful shutdown ───────────────────────────────────────────────────
   const shutdown = () => {
     console.log("\nShutting down...");
+    clearInterval(heartbeat);
     unsubs.forEach((u) => u());
     engine.stop();
     wss.close();

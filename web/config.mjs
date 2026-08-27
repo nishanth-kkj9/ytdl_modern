@@ -24,4 +24,6 @@ export const config = {
   // Engine
   engineCwd: path.join(projectRoot, "python-engine"),
   engineMaxRestarts: 3,
+  // Upper bound on queued engine commands when the engine is unavailable.
+  engineMaxPendingCommands: Number(process.env.ENGINE_MAX_PENDING || 100),
 };

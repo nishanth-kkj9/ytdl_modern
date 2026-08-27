@@ -105,7 +105,7 @@ _MUTAGEN_TYPE_CHECK = {
 YT_RE = re.compile(
     r"(https?://)?(www\.)?"
     r"(youtube\.com/(watch\?.*v=|shorts/|embed/|v/)|youtu\.be/)"
-    r"[\w\-]{11}",
+    r"[\w\-]{11}(?![\w\-])",
     re.IGNORECASE,
 )
 
@@ -291,9 +291,9 @@ def _best_thumbnail_url(info: dict) -> str:
     ):
         return direct_url if _is_safe_thumbnail_url(direct_url) else ""
 
-    # Strategy 1: probe YouTube's standard thumbnail URL hierarchy (max 3 s each).
+    # Strategy 1: probe YouTube's standard thumbnail URL hierarchy (max 2 s each).
     # The HEAD requests run concurrently so the total latency is bounded by the
-    # slowest single request (~3s) rather than the sum of all candidates (~12s).
+    # slowest single request (~2s) rather than the sum of all candidates (~8s).
     if vid_id:
         candidates = [
             f"https://i.ytimg.com/vi/{vid_id}/maxresdefault.jpg",
@@ -306,7 +306,7 @@ def _best_thumbnail_url(info: dict) -> str:
             try:
                 req = urllib.request.Request(url, method="HEAD",
                     headers={"User-Agent": "Mozilla/5.0"})
-                resp = urllib.request.urlopen(req, timeout=3)
+                resp = urllib.request.urlopen(req, timeout=2)
                 return resp.status == 200
             except Exception:
                 return False

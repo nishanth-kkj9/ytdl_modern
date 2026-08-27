@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { sanitizeHistoryRecord } from "../validate.mjs";
 
 /**
  * history.mjs — GET/POST /api/history
@@ -17,12 +18,14 @@ export function historyRouter(historyService) {
   });
 
   router.post("/", async (req, res) => {
-    const record = req.body;
-    if (!record || !record.id) {
-      return res.status(400).json({ error: "record with id is required" });
+    // Whitelist + coerce the incoming record so arbitrary payloads can't be
+    // persisted (I-09). Only known fields survive, with length caps applied.
+    const result = sanitizeHistoryRecord(req.body);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
     }
     try {
-      await historyService.saveRecord(record);
+      await historyService.saveRecord(result.record);
       return res.json({ ok: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });
