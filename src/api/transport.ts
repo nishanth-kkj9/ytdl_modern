@@ -66,7 +66,10 @@ async function webFetch(url: string, method: string, body?: unknown) {
     const text = await res.text();
     throw new Error(text || `Request failed: ${res.status}`);
   }
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch((e) => {
+    console.error("Fetch parse error:", e);
+    return {};
+  });
   if (data && data.error) throw new Error(data.error);
   return data;
 }

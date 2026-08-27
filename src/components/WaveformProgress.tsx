@@ -2,13 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useDownloadStore } from "../stores/downloadStore";
 import type { DownloadItem } from "../types";
-
-function fmtSize(bytes: number): string {
-  if (bytes <= 0) return "0 B";
-  const u = ["B", "KB", "MB", "GB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), u.length - 1);
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
-}
+import { fmtSize } from "../utils";
 
 function eta(downloaded: number, total: number, speed: number): string | null {
   if (speed <= 0 || downloaded >= total) return null;
@@ -26,7 +20,7 @@ function formatElapsed(ms: number): string {
 }
 
 function WaveformBars({ isAudio }: { isAudio: boolean }) {
-  const bars = Array.from({ length: 48 }, (_, i) => i);
+  const bars = Array.from({ length: 24 }, (_, i) => i);
   const staggerDelay = 0.05;
   return (
     <div className={`waveform-bars ${isAudio ? "waveform-bars-audio" : "waveform-bars-video"}`} aria-hidden="true">

@@ -196,16 +196,16 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     try {
       const records = await invoke<HistoryItem[]>("load_history");
       set({ history: records });
-    } catch {
-      // history unavailable
+    } catch (e) {
+      console.error("Failed to load history:", e);
     }
   },
   clearHistory: async () => {
     try {
       await invoke("clear_history");
       set({ history: [] });
-    } catch {
-      // clear failed
+    } catch (e) {
+      console.error("Failed to clear history:", e);
     }
   },
 }));

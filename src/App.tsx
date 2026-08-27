@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { DrawerPanel } from "./components/DrawerPanel";
@@ -23,10 +23,22 @@ function App() {
 
   const [drawerTab, setDrawerTab] = useState<"downloads" | "history">("downloads");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        setDrawerOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   const engineLabel =
     engineStatus === "ready" ? "Engine ready" :
@@ -41,7 +53,7 @@ function App() {
         main={
           <ErrorBoundary>
             <div className="flex h-screen flex-col text-text">
-              <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-3.5">
+              <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 sm:px-6 sm:py-3.5">
                 <div className="flex items-center gap-3.5">
                   <div className="badge-play" aria-hidden="true">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -70,6 +82,7 @@ function App() {
                   </span>
                   <button
                     type="button"
+                    ref={drawerTriggerRef}
                     aria-label="Open queue and history"
                     aria-expanded={drawerOpen}
                     aria-controls="queue-history-drawer"
@@ -103,6 +116,7 @@ function App() {
         tab={drawerTab}
         onTabChange={setDrawerTab}
         onClose={() => setDrawerOpen(false)}
+        triggerRef={drawerTriggerRef}
       />
     </>
   );

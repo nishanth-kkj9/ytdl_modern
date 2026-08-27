@@ -1,6 +1,6 @@
 export function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface/30 px-6 py-8 text-center">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong bg-surface/30 px-6 py-8 text-center">
       <div className="badge-play mb-4" aria-hidden="true">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z" />

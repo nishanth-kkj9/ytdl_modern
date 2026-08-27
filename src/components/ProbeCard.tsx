@@ -1,36 +1,10 @@
 import { useEffect, useState } from "react";
 import { FormatInfo, ProbeInfo } from "../types";
-
-// Only render thumbnails from YouTube's known CDN domains (defense-in-depth;
-// the server already enforces this via _is_safe_thumbnail_url).
-const SAFE_THUMBNAIL_HOSTS = [".ytimg.com", ".googleusercontent.com", ".googlevideo.com", ".youtube.com"];
-function isSafeThumbnail(url: string): boolean {
-  try {
-    const host = new URL(url).hostname;
-    return SAFE_THUMBNAIL_HOSTS.some((h) => host.endsWith(h));
-  } catch {
-    return false;
-  }
-}
-
-function fmtDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.round(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function fmtSize(bytes: number): string {
-  if (bytes <= 0) return "?";
-  const u = ["B", "KB", "MB", "GB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), u.length - 1);
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
-}
+import { fmtSize, fmtDuration, isSafeThumbnail } from "../utils";
 
 function AudioFormatRow({ f }: { f: FormatInfo }) {
   return (
-    <div className="grid grid-cols-[3rem_3rem_3.5rem_5rem_3rem_1fr] items-center gap-3 rounded-lg border border-border/60 bg-bg/60 px-3 py-2 text-xs">
+    <div className="grid grid-cols-[2.5rem_2.5rem_3rem_1fr] items-center gap-2 rounded-lg border border-border/60 bg-bg/60 px-3 py-2 text-xs sm:grid-cols-[3rem_3rem_3.5rem_5rem_3rem_1fr] sm:gap-3">
       <span className="font-mono text-text-muted">{f.format_id}</span>
       <span className="font-medium text-text-secondary">{f.ext}</span>
       <span className="tabular-nums text-accent-audio">{f.abr ? `${f.abr}k` : "—"}</span>
@@ -43,7 +17,7 @@ function AudioFormatRow({ f }: { f: FormatInfo }) {
 
 function VideoFormatRow({ f }: { f: FormatInfo }) {
   return (
-    <div className="grid grid-cols-[3rem_3rem_5rem_3rem_1fr_4rem] items-center gap-3 rounded-lg border border-border/60 bg-bg/60 px-3 py-2 text-xs">
+    <div className="grid grid-cols-[2.5rem_2.5rem_4rem_1fr] items-center gap-2 rounded-lg border border-border/60 bg-bg/60 px-3 py-2 text-xs sm:grid-cols-[3rem_3rem_5rem_3rem_1fr_4rem] sm:gap-3">
       <span className="font-mono text-text-muted">{f.format_id}</span>
       <span className="font-medium text-text-secondary">{f.ext}</span>
       <span className="text-accent-video">{f.resolution ?? "—"}</span>

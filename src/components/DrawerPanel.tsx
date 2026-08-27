@@ -7,9 +7,10 @@ interface DrawerPanelProps {
   tab: "downloads" | "history";
   onTabChange: (tab: "downloads" | "history") => void;
   onClose: () => void;
+  triggerRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
-export function DrawerPanel({ open, tab, onTabChange, onClose }: DrawerPanelProps) {
+export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: DrawerPanelProps) {
   const queue = useDownloadStore((s) => s.queue);
   const history = useDownloadStore((s) => s.history);
   const cancelDownload = useDownloadStore((s) => s.cancelDownload);
@@ -18,13 +19,8 @@ export function DrawerPanel({ open, tab, onTabChange, onClose }: DrawerPanelProp
   const active = queue.filter((i) => i.status === "downloading" || i.status === "queued");
 
   useEffect(() => {
-    if (!open) {
-      const trigger = document.querySelector<HTMLButtonElement>(
-        'button[aria-label="Open queue and history"]'
-      );
-      trigger?.focus();
-    }
-  }, [open]);
+    if (!open) triggerRef?.current?.focus();
+  }, [open, triggerRef]);
 
   // Close on Escape key when open.
   useEffect(() => {
@@ -51,9 +47,9 @@ export function DrawerPanel({ open, tab, onTabChange, onClose }: DrawerPanelProp
       <aside
         id="queue-history-drawer"
         role="dialog"
-        aria-modal={open}
+        aria-modal={open ? "true" : undefined}
         aria-label="Queue and history"
-        className={`absolute right-0 top-0 flex h-full w-[360px] flex-col border-l border-border bg-surface shadow-2xl transition-transform duration-250 ease-out ${
+        className={`absolute right-0 top-0 flex h-full w-full flex-col border-l border-border bg-surface shadow-2xl transition-transform duration-250 ease-out sm:w-[360px] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >

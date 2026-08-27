@@ -173,8 +173,8 @@ export function UrlInput() {
               aria-hidden="true"
               className={`pointer-events-none absolute inset-y-1 w-[calc(50%-4px)] rounded-xl transition-all duration-200 ease-out ${
                 isAudio
-                  ? "left-1 bg-accent-audio-dim shadow-[0_0_0_1px_rgba(245,158,11,0.25),0_0_20px_rgba(245,158,11,0.1)]"
-                  : "left-[calc(50%)] bg-accent-video-dim shadow-[0_0_0_1px_rgba(0,184,212,0.25),0_0_20px_rgba(0,184,212,0.1)]"
+                  ? "left-1 bg-accent-audio/20 shadow-[0_0_0_1px_rgba(245,158,11,0.3),0_0_20px_rgba(245,158,11,0.12)]"
+                  : "left-[calc(50%)] bg-accent-video/20 shadow-[0_0_0_1px_rgba(0,184,212,0.3),0_0_20px_rgba(0,184,212,0.12)]"
               }`}
             />
             <button
@@ -207,7 +207,7 @@ export function UrlInput() {
             </button>
           </div>
 
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:flex">
             <label className="flex flex-1 flex-col gap-1 sm:flex-none">
               <span className="eyebrow">Format</span>
               <select

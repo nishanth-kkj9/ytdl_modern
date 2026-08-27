@@ -76,6 +76,7 @@ export function ConfirmDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
+      tabIndex={-1}
     >
       <div className="mx-4 w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-2xl">
         <h3 id="confirm-title" className="text-base font-semibold text-text">{title}</h3>
