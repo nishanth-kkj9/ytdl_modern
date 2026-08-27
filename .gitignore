@@ -48,3 +48,6 @@ repomix-output.xml
 
 # Review artifacts
 .review/
+analysis/
+vite.log
+web/test-output.txt
