@@ -56,22 +56,32 @@ function ensureWebSocket() {
   };
 }
 
-async function webFetch(url: string, method: string, body?: unknown) {
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+async function webFetch(url: string, method: string, body?: unknown, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Request failed: ${res.status}`);
+    }
+    const data = await res.json().catch((e) => {
+      console.error("Fetch parse error:", e);
+      return {};
+    });
+    if (data && data.error) throw new Error(data.error);
+    return data;
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error(`Request timed out: ${method} ${url}`);
+    throw e;
+  } finally {
+    clearTimeout(t);
   }
-  const data = await res.json().catch((e) => {
-    console.error("Fetch parse error:", e);
-    return {};
-  });
-  if (data && data.error) throw new Error(data.error);
-  return data;
 }
 
 // ── Unified invoke (maps Tauri-style commands to REST endpoints) ────────────
@@ -129,8 +139,4 @@ export async function openPath(path: string): Promise<void> {
   const downloadUrl = `/downloads/${encodeURIComponent(path.split(/[\\/]/).pop() || "")}`;
   window.open(downloadUrl, "_blank");
   return undefined as any;
-}
-
-export async function revealItemInDir(path: string): Promise<void> {
-  return openPath(path);
 }

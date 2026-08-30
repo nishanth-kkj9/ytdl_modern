@@ -23,6 +23,14 @@ async function main() {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
   app.disable("x-powered-by");
+  // Production security headers (no external dep needed for local app)
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
 
   // Reject requests with unexpected Host headers (DNS rebinding protection).
   // A local server must only be reachable via 127.0.0.1/localhost — an
@@ -35,6 +43,9 @@ async function main() {
     `localhost:${config.port}`,
     "127.0.0.1",
     "localhost",
+    "[::1]:" + config.port,
+    "[::1]",
+    "::1",
   ]);
   app.use((req, res, next) => {
     const host = String(req.headers.host || "").toLowerCase();
@@ -92,11 +103,20 @@ async function main() {
   );
 
   wss.on("connection", (socket) => {
-    // Send current engine status on connect.
+    // Send current engine status on connect. The payload includes
+    // `type: "engine_ready"` so the frontend's event router recognizes it
+    // (the bus-relayed engine_ready carries the type inside its payload;
+    // this synthetic message historically did not, which left the UI's
+    // engine badge stuck on "starting" whenever the client connected after
+    // the engine had already become ready).
     socket.send(
       JSON.stringify({
         type: "engine_ready",
-        payload: { ready: engine.isReady() },
+        payload: {
+          type: "engine_ready",
+          ready: engine.isReady(),
+          ...(engine.getTools() ?? {}),
+        },
       })
     );
     // Track liveness so stale/half-open connections are cleaned up.
@@ -163,6 +183,15 @@ async function main() {
     console.log(`   ➜  WebSocket: ws://${config.host}:${config.port}/ws\n`);
   });
 }
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] Unhandled rejection:", reason);
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[server] Uncaught exception:", err);
+  process.exit(1);
+});
 
 main().catch((err) => {
   console.error("Failed to start server:", err);

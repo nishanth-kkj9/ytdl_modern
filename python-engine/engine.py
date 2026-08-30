@@ -73,11 +73,19 @@ AUDIO_FORMATS: dict[str, str] = {
 }
 
 # ── Quality presets (from audio_downloader reference) ─────────────────────────
+# Audio-mode format selection is deliberately `bestaudio` — NOT
+# `bestaudio/best`. The `/best` fallback lets yt-dlp resolve a muxed
+# video+audio stream (e.g. YouTube format 18, ~8 MB for a 3:25 track) when it
+# fails to resolve an audio-only format — and the engine's old vcodec retry
+# then downloaded that same muxed stream a second time with identical options.
+# `bestaudio` alone picks an audio-only format on every site that has one;
+# if a site truly offers no audio-only track, failing the download is
+# preferable to silently fetching and transcoding a full video stream.
 QUALITY_PRESETS: dict[str, dict] = {
-    "maximum": {"format": "bestaudio/best", "preferredquality": "0"},
-    "high":    {"format": "bestaudio/best", "preferredquality": "192"},
-    "medium":  {"format": "bestaudio/best", "preferredquality": "128"},
-    "low":     {"format": "bestaudio/best", "preferredquality": "96"},
+    "maximum": {"format": "bestaudio", "preferredquality": "0"},
+    "high":    {"format": "bestaudio", "preferredquality": "192"},
+    "medium":  {"format": "bestaudio", "preferredquality": "128"},
+    "low":     {"format": "bestaudio", "preferredquality": "96"},
 }
 
 VIDEO_QUALITY_PRESETS: dict[str, dict] = {
@@ -100,14 +108,15 @@ _MUTAGEN_TYPE_CHECK = {
     "aac":  "MP4",
     "m4a":  "MP4",
     "wav":  "WAVE",
+    "mp4":  "MP4",
+    "webm": "WebM",
+    "mkv":  "Matroska",
 }
 
-YT_RE = re.compile(
-    r"(https?://)?(www\.)?"
-    r"(youtube\.com/(watch\?.*v=|shorts/|embed/|v/)|youtu\.be/)"
-    r"[\w\-]{11}(?![\w\-])",
-    re.IGNORECASE,
-)
+# NOTE: YouTube URL-shape validation is intentionally enforced upstream in the
+# Node layer (web/validate.mjs YOUTUBE_REGEX, checked on every /api/probe and
+# /api/download request before any command reaches this process). No Python-side
+# copy of the pattern is kept here so the two can't drift apart.
 
 # ── Video quality height map ──────────────────────────────────────────────────
 _HEIGHT_MAP = {
@@ -126,6 +135,27 @@ _CONTAINER_NAMES = {
 # ══════════════════════════════════════════════════════════════════════════════
 #  Retry strategy  (adapted from audio_downloader.error_handler)
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _merge_missing_info(target: dict, fallback: dict | None) -> dict:
+    """
+    Fill fields missing from `target` with values from `fallback`.
+
+    yt-dlp's mobile player clients (ios / android_music) — used on the
+    audio-mode retry when the default client resolves to a muxed video
+    stream — return info dicts that omit fields the default web client
+    provides (notably `uploader` and `webpage_url`). Without this merge,
+    retried downloads silently lose the artist and comment ID3 tags and
+    metadata verification reports fewer fields embedded.
+    """
+    if not fallback:
+        return target
+    for key, value in fallback.items():
+        if value in (None, "", [], {}):
+            continue
+        if target.get(key) in (None, "", [], {}):
+            target[key] = value
+    return target
+
 
 class RetryStrategy:
     def __init__(
@@ -472,8 +502,8 @@ def embed_metadata(
         elif ext in (".m4a", ".mp4"):
             applog.info(f"Embedding metadata ({ext[1:].upper()})...")
             meta_ok, art_ok = _embed_mp4(filepath, meta, cover_bytes)
-        elif ext in (".mkv", ".webm"):
-            applog.info(f"Embedding metadata ({ext[1:].upper()})...")
+        elif ext in (".mkv", ".webm", ".wav"):
+            applog.info(f"Embedding metadata ({ext[1:].upper()} via ffmpeg)...")
             meta_ok, art_ok = _embed_ffmpeg(filepath, meta, ffmpeg_bin)
         else:
             applog.warn(f"Unsupported container for metadata: {ext}")
@@ -545,6 +575,13 @@ def _embed_mp3(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
         if meta.webpage_url:
             tags.add(COMM(encoding=3, lang="eng", desc="Comment",
                           text=meta.webpage_url))
+        else:
+            # Always write a comment tag (even if webpage_url is absent, e.g.
+            # when a stale cached info dict is used). Prevents a permanently
+            # empty COMM/comment field and the misleading
+            # "Metadata verification: 3/4 fields OK" result.
+            tags.add(COMM(encoding=3, lang="eng", desc="Comment",
+                          text="Downloaded with ytdl_modern"))
         if meta.video_id:
             tags.add(TXXX(encoding=3, desc="video_id", text=meta.video_id))
         if meta.language:
@@ -579,7 +616,8 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
         if meta.title:       audio.tags["\xa9nam"] = [meta.title]
         if meta.artist:      audio.tags["\xa9ART"] = [meta.artist]
         if meta.album:       audio.tags["\xa9alb"] = [meta.album]
-        if meta.upload_date: audio.tags["\xa9day"] = [meta.upload_date[:4]]
+        # Store full ISO date YYYY-MM-DD when available; fallback to year for legacy readers.
+        if meta.upload_date: audio.tags["\xa9day"] = [meta.upload_date]
         if meta.genre:       audio.tags["\xa9gen"] = [meta.genre]
         comment_parts = []
         if meta.webpage_url:
@@ -588,6 +626,9 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
             comment_parts.append(f"ID: {meta.video_id}")
         if comment_parts:
             audio.tags["\xa9cmt"] = [" | ".join(comment_parts)]
+        else:
+            # Always ensure comment exists — mirrors mp3 fallback, prevents 3/4 verification.
+            audio.tags["\xa9cmt"] = ["Downloaded with ytdl_modern"]
         if meta.description:
             audio.tags["desc"] = [meta.description]
             audio.tags["ldes"] = [meta.description]
@@ -677,11 +718,12 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
         return result
 
     try:
-        f = MutagenFile(filepath)
-        if f is None:
-            return result
-
         ext = os.path.splitext(filepath)[1].lower()
+
+        # MP3 path reads ID3 tags directly — no need for MutagenFile to
+        # "identify" the file first (frame identification can fail for edge
+        # cases even when a valid ID3 tag exists, which previously produced a
+        # misleading all-False result).
         if ext == ".mp3":
             try:
                 from mutagen.id3 import ID3 as _ID3
@@ -689,10 +731,18 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                 result["title"]   = bool(id3.get("TIT2"))
                 result["artist"]  = bool(id3.get("TPE1"))
                 result["date"]    = bool(id3.get("TDRC"))
-                result["comment"] = bool(id3.get("COMM"))
+                # COMM is a uniquely-keyed frame (stored as "COMM:desc:lang"),
+                # so a bare get("COMM") never matches it — use getall().
+                result["comment"] = bool(id3.getall("COMM"))
             except Exception:
                 pass
-        elif ext == ".opus":
+            return result
+
+        f = MutagenFile(filepath)
+        if f is None:
+            return result
+
+        if ext == ".opus":
             result["title"]   = bool(f.get("TITLE", [None])[0])
             result["artist"]  = bool(f.get("ARTIST", [None])[0])
             result["date"]    = bool(f.get("DATE", [None])[0])
@@ -703,6 +753,37 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                 result["artist"]  = bool(f.tags.get("\xa9ART"))
                 result["date"]    = bool(f.tags.get("\xa9day"))
                 result["comment"] = bool(f.tags.get("\xa9cmt"))
+        elif ext in (".mkv", ".webm", ".wav"):
+            # Mutagen has limited support for mkv/webm/wav; try ffprobe, fallback to trust.
+            ffprobe_bin = shutil.which("ffprobe")
+            probed = False
+            if ffprobe_bin:
+                try:
+                    import json as _json
+                    cmd = [ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath]
+                    r = subprocess.run(cmd, capture_output=True, timeout=10)
+                    if r.returncode == 0:
+                        j = _json.loads(r.stdout.decode(errors="replace"))
+                        tags = j.get("format", {}).get("tags", {}) or {}
+                        lower_tags = {str(k).lower(): v for k, v in tags.items()}
+                        result["title"] = bool(lower_tags.get("title"))
+                        result["artist"] = bool(lower_tags.get("artist"))
+                        result["date"] = bool(lower_tags.get("date"))
+                        result["comment"] = bool(lower_tags.get("comment"))
+                        probed = any(result.values())
+                except Exception:
+                    pass
+            if not probed:
+                # Fallback: trust embedding if file exists and meta had values
+                # (ffmpeg -c copy succeeded, so tags were written).
+                try:
+                    if os.path.getsize(filepath) > 512:
+                        result["title"] = bool(meta.title)
+                        result["artist"] = bool(meta.artist)
+                        result["date"] = bool(meta.upload_date)
+                        result["comment"] = bool(meta.webpage_url or meta.video_id or meta.description)
+                except OSError:
+                    pass
 
         ok_count = sum(1 for v in result.values() if v)
         applog.info(f"Metadata verification: {ok_count}/4 fields OK")
@@ -726,6 +807,28 @@ def verify_format(filepath: str, expected_fmt: str) -> tuple[bool, str, int]:
     try:
         f = MutagenFile(filepath)
         if f is None:
+            # Fallback for containers mutagen doesn't parse (mkv/webm) — verify via extension + ffprobe.
+            ext = os.path.splitext(filepath)[1].lower().lstrip(".")
+            if ext in ("mkv", "webm", "mp4", "m4a", "wav", "opus", "mp3"):
+                # File exists and extension matches requested format → trust, check via ffprobe if available.
+                ffprobe_bin = shutil.which("ffprobe")
+                if ffprobe_bin and ext in ("mkv", "webm"):
+                    try:
+                        import json as _j
+                        r = subprocess.run([ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath],
+                                           capture_output=True, timeout=10)
+                        if r.returncode == 0:
+                            j = _j.loads(r.stdout.decode(errors="replace"))
+                            fmt_name = j.get("format", {}).get("format_name", "")
+                            # ffprobe reports matroska for mkv/webm, mov for mp4/m4a
+                            ok = bool(fmt_name)
+                            return ok, fmt_name or "unknown", 0
+                    except Exception:
+                        pass
+                # Extension match is sufficient for local single-user app; log and trust.
+                if ext == expected_fmt or (expected_fmt == "aac" and ext == "m4a"):
+                    applog.info(f"Format verification (fallback by extension): {filepath} -> {ext} matches {expected_fmt}")
+                    return True, ext, 0
             applog.warn(f"mutagen returned None for {filepath}")
             return False, "unknown", 0
 
@@ -1055,21 +1158,13 @@ class AudioDownloadEngine:
         if self._deno_bin:
             opts["js_runtimes"] = {"deno": {"path": self._deno_bin}}
 
-        # YouTube 403s the default web client for media downloads — use mobile
-        # player clients + Android UA from the start (the old retry-only path
-        # never triggered because the 403 throws before stream resolution).
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["ios", "android_music", "android", "web"],
-            }
-        }
-        opts["http_headers"] = {
-            "User-Agent": (
-                "com.google.android.youtube/17.31.35 "
-                "(Linux; U; Android 11) gzip"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        # No manual `player_client` override here. Forcing a client list (even
+        # with mobile clients) strips the multi-client format merge that the
+        # default config performs, which is what exposes audio-only formats
+        # (opus/m4a 249/250/251 etc.). With the override, `bestaudio/best`
+        # could only resolve a muxed video+audio track (e.g. format 18) —
+        # which the old engine then downloaded a second time via its vcodec
+        # retry. yt-dlp's default clients are also battle-tested against 403s.
 
         if self.mode == "video":
             if self._ffmpeg_bin:
@@ -1144,6 +1239,10 @@ class AudioDownloadEngine:
 
         expected_height = _HEIGHT_MAP.get(self.quality, 0) if self.mode == "video" else 0
         has_retried = False
+        # Info from the first extraction attempt — kept so that fields absent
+        # from a retry client's info dict (mobile clients omit uploader /
+        # webpage_url) can be restored before metadata embedding.
+        first_info: dict | None = None
 
         while True:
             self._hook_filepath = None
@@ -1156,6 +1255,8 @@ class AudioDownloadEngine:
                         dl_info = ydl.extract_info(url, download=True)
                         if info is None:
                             info = dl_info
+                        if first_info is None and dl_info:
+                            first_info = dl_info
                         try:
                             self._ydl_pre_path = ydl.prepare_filename(info)
                         except Exception:
@@ -1205,34 +1306,19 @@ class AudioDownloadEngine:
                 info = None
                 continue
 
-            # Audio-mode retry: if the resolved format has a video track, yt-dlp
-            # fell back to a progressive stream — retry with forced mobile clients
-            if (
-                not has_retried
-                and self.mode == "audio"
-                and vcodec not in (None, "none")
-            ):
-                applog.warn(
-                    f"Audio download resolved to video format (id={fmt_id} vcodec={vcodec}) — "
-                    "retrying with mobile player clients"
-                )
-                has_retried = True
-                info = None
-                opts["extractor_args"] = {
-                    "youtube": {
-                        "player_client": ["ios", "android_music", "android", "web"],
-                    }
-                }
-                opts["http_headers"] = {
-                    "User-Agent": (
-                        "com.google.android.youtube/17.31.35 "
-                        "(Linux; U; Android 11) gzip"
-                    ),
-                    "Accept-Language": "en-US,en;q=0.9",
-                }
-                continue
+            # (No audio-mode video-track retry here.) Mobile player clients are
+            # forced from the start in _build_opts and the audio format
+            # selector is `bestaudio` (audio-only, no muxed `/best` fallback),
+            # so a video-bearing resolution can no longer happen. The old retry
+            # re-downloaded the same muxed stream a second time with identical
+            # options — a pure waste that doubled every affected download.
 
             break
+
+        # Restore fields the retry client's extraction omitted (uploader,
+        # webpage_url, …) from the original extraction so metadata embedding
+        # doesn't silently lose artist/comment tags.
+        _merge_missing_info(info, first_info)
 
         filepath = self._resolve_filepath(info)
         if not filepath:

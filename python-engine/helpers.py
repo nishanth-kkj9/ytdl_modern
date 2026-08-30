@@ -1,35 +1,13 @@
 """
 ytdl_modern.helpers  (v12)
 ──────────────────────────
-String formatting, filename sanitization, platform-aware file opener.
-
-IMPROVEMENTS vs v8:
-  • format_size() handles negative values gracefully (returns "—").
-  • format_views() handles zero correctly (was returning "—" for 0 views —
-    now returns "0" to distinguish "unknown" from "zero views").
-  • make_label() gains an `italic` kwarg for sub-labels.
-  • make_separator() accepts a `color` override so callers can create
-    accent-coloured separators.
-  • is_wsl2() cached via module-level _wsl2_cached so repeated calls
-    don't re-open /proc/version.
-
-RETAINED from v8:
-  FIX: make_label uses font.setFamilies([...]) to preserve emoji fallback.
-  NOTE: is_wsl2() public alias kept for external callers.
+String formatting and filename sanitization.
 """
 from __future__ import annotations
 
 import os
-import platform
 import re
-import shutil
-import subprocess
 from datetime import datetime
-from typing import Optional
-
-
-# Cache WSL2 detection — /proc/version doesn't change at runtime
-_wsl2_cached: Optional[bool] = None
 
 
 # ── String utilities ───────────────────────────────────────────────────────────
@@ -116,71 +94,7 @@ def sanitize_filename(name: str) -> str:
 
 
 # ── Platform-aware file / folder opener ───────────────────────────────────────
+# REMOVED (QUAL-02): open_path/_wsl_open/_linux_open/is_wsl2 were unreachable —
+# the web frontend opens files via browser URLs (src/api/transport.ts::openPath),
+# never through this Python process.
 
-def is_wsl2() -> bool:
-    """Return True if running inside WSL2. Cached after first call."""
-    global _wsl2_cached
-    if _wsl2_cached is not None:
-        return _wsl2_cached
-    try:
-        with open("/proc/version", "r") as f:
-            _wsl2_cached = "microsoft" in f.read().lower()
-    except OSError:
-        _wsl2_cached = False
-    return _wsl2_cached
-
-
-# Keep private alias for backwards compatibility
-_is_wsl = is_wsl2
-
-
-def _wsl_open(path: str) -> None:
-    if shutil.which("wslview"):
-        subprocess.Popen(["wslview", path])
-        return
-    if shutil.which("wslpath"):
-        try:
-            win_path = subprocess.check_output(
-                ["wslpath", "-w", path], text=True
-            ).strip()
-            subprocess.Popen(["explorer.exe", win_path])
-            return
-        except Exception:
-            pass
-    try:
-        subprocess.Popen(["explorer.exe", path])
-    except Exception:
-        pass
-
-
-def _linux_open(path: str) -> None:
-    for opener in ("xdg-open", "nautilus", "thunar", "dolphin", "pcmanfm", "nemo"):
-        if shutil.which(opener):
-            try:
-                subprocess.Popen([opener, path])
-                return
-            except Exception:
-                continue
-    try:
-        subprocess.Popen(["xdg-open", path])
-    except Exception:
-        pass
-
-
-def open_path(path: str) -> None:
-    """Open path in native file manager / default app. Never raises."""
-    if not path:
-        return
-    try:
-        system = platform.system()
-        if system == "Windows":
-            os.startfile(path)          # type: ignore[attr-defined]
-        elif system == "Darwin":
-            subprocess.Popen(["open", path])
-        else:
-            if is_wsl2():
-                _wsl_open(path)
-            else:
-                _linux_open(path)
-    except Exception:
-        pass

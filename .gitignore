@@ -51,3 +51,6 @@ repomix-output.xml
 analysis/
 vite.log
 web/test-output.txt
+
+# Runtime helper (backend process id written during dev sessions)
+server.pid

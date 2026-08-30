@@ -10,9 +10,9 @@ export function useEngineEvents() {
   const addLog = useDownloadStore((state) => state.addLog);
   const setEngineStatus = useDownloadStore((state) => state.setEngineStatus);
   const setMetadataResult = useDownloadStore((state) => state.setMetadataResult);
+  const setStatusMessage = useDownloadStore((state) => state.setStatusMessage);
 
   const downloadBaseRef = useRef<string | null>(null);
-  const hasSeenReadyRef = useRef(false);
 
   function parseFormats(raw: unknown): FormatInfo[] {
     if (!Array.isArray(raw)) return [];
@@ -52,12 +52,21 @@ export function useEngineEvents() {
 
       unlistenEngine = await listen("engine-event", (event) => {
         const payload = event.payload as Record<string, unknown>;
-        if (payload.type === "engine_ready" && !hasSeenReadyRef.current) {
-          hasSeenReadyRef.current = true;
+        // Any engine_ready flips the status to ready. This covers both the
+        // server's on-connect snapshot and real bus events — no "seen once"
+        // gate here, otherwise the badge stays on "starting" forever after an
+        // engine restart (restartEngine() sets "starting", and the follow-up
+        // engine_ready was previously ignored).
+        if (payload.type === "engine_ready") {
           setEngineStatus("ready");
         }
         if (payload.type === "fatal_error") {
           setEngineStatus("error");
+        }
+        if (payload.type === "engine_crashed") {
+          // EngineManager auto-restarts with bounded attempts — reflect the
+          // transient downtime instead of silently keeping a stale "ready".
+          setEngineStatus("starting");
         }
         const id = String(payload.id ?? "");
 
@@ -76,6 +85,7 @@ export function useEngineEvents() {
                 formats: parseFormats(info.formats),
               });
               addLog(`Probe success: ${String(info.title ?? "unknown")}`);
+              setStatusMessage("Probe complete.");
             }
             return;
           }
@@ -118,6 +128,7 @@ export function useEngineEvents() {
               title: payload.title ? String(payload.title) : undefined,
             });
             addLog(`Download ${success ? "finished" : "failed"}: ${id}`);
+            setStatusMessage(success ? "Download completed." : "Download failed.");
             if (success) {
               const queueItem = useDownloadStore.getState().queue.find((qi) => qi.id === id);
               addHistoryItem({
@@ -150,18 +161,32 @@ export function useEngineEvents() {
           case "cancelled": {
             updateQueueItem(id, { status: "cancelled", message: "Cancelled" });
             addLog(`Cancelled: ${id}`);
+            setStatusMessage("Download cancelled.");
             return;
           }
           case "error": {
             updateQueueItem(id, { status: "failed", message: String(payload.error ?? "Error") });
             addLog(`Engine error: ${String(payload.error_type ?? "")}: ${String(payload.error ?? "")}`);
+            setStatusMessage("Download failed.");
+            return;
+          }
+          case "engine_crashed": {
+            addLog("Engine crashed — waiting for automatic restart…", "warn");
             return;
           }
           case "engine_ready": {
-            const ff = payload.ffmpeg ? "yes" : "no";
-            const fp = payload.ffprobe ? "yes" : "no";
-            const dn = payload.deno ? "yes" : "no";
-            addLog(`Engine ready — ffmpeg=${ff} ffprobe=${fp} deno=${dn}`);
+            // The synthetic on-connect snapshot carries only `ready`; the real
+            // bus event carries tool availability. Only log when tools exist.
+            if (
+              payload.ffmpeg !== undefined ||
+              payload.ffprobe !== undefined ||
+              payload.deno !== undefined
+            ) {
+              const ff = payload.ffmpeg ? "yes" : "no";
+              const fp = payload.ffprobe ? "yes" : "no";
+              const dn = payload.deno ? "yes" : "no";
+              addLog(`Engine ready — ffmpeg=${ff} ffprobe=${fp} deno=${dn}`);
+            }
             return;
           }
           case "engine_log": {
@@ -182,5 +207,5 @@ export function useEngineEvents() {
     return () => {
       unlistenEngine?.();
     };
-  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, updateQueueItem]);
+  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, updateQueueItem]);
 }

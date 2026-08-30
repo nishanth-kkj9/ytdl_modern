@@ -6,7 +6,6 @@ vi.mock("../api/transport", () => ({
   invoke: (...args: unknown[]) => invoke(...args),
   listen: vi.fn(async () => () => {}),
   openPath: vi.fn(async () => {}),
-  revealItemInDir: vi.fn(async () => {}),
 }));
 
 import { useDownloadStore } from "./downloadStore";

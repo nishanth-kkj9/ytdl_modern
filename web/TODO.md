@@ -1,9 +1,9 @@
 # YTDL Modern — Web Conversion Plan (Modular / Feature-proof)
 
 ## Goal
-Convert the Tauri desktop app into a modular local-hosted website while keeping
-the existing Tauri app intact. Add a clean abstraction layer so adding new
-features is easy.
+Run the app as a modular local-hosted website (there is no Tauri/desktop build
+in this repository). Keep a clean abstraction layer so adding new features is
+easy.
 
 ## Architecture
 ```

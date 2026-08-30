@@ -23,6 +23,19 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
     if (!open) triggerRef?.current?.focus();
   }, [open, triggerRef]);
 
+  // Move focus into the drawer when it opens so keyboard/screen-reader users
+  // land inside the dialog instead of staying on background content
+  // (mirrors the ConfirmDialog focus-on-open pattern).
+  useEffect(() => {
+    if (!open) return;
+    const aside = asideRef.current;
+    if (!aside) return;
+    const first = aside.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    first?.focus();
+  }, [open]);
+
   // Close on Escape + focus trap when open.
   useEffect(() => {
     if (!open) return;

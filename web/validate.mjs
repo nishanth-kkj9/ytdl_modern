@@ -1,10 +1,16 @@
 /**
  * validate.mjs — shared URL validation + history record sanitization helpers.
  */
+// NOTE: the client-side copy of this pattern lives in src/components/UrlInput.tsx.
+// This server-side copy is the authoritative enforcement point; the frontend
+// copy only gates the Probe/Add buttons. Keep the two in sync.
 export const YOUTUBE_REGEX =
-  /^(?:https?:\/\/)?(?:www\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])/i;
+  /^(?:https?:\/\/)?(?:www\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
+
+export const MAX_URL_LENGTH = 2048;
 
 export function isYouTubeUrl(url) {
+  if (typeof url !== "string" || url.length === 0 || url.length > MAX_URL_LENGTH) return false;
   return YOUTUBE_REGEX.test(url);
 }
 

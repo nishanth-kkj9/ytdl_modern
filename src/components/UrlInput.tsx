@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useDownloadStore } from "../stores/downloadStore";
 
-const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])/i;
+// NOTE: UI-only copy of the server-side allowlist in web/validate.mjs
+// (YOUTUBE_REGEX), which is the authoritative enforcement point (the server
+// rejects non-YouTube URLs with a 400 regardless of what this copy allows).
+// Keep the two patterns in sync when adding support for new URL shapes.
+const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
 
 const audioFormats = [
   { value: "mp3", label: "MP3" },

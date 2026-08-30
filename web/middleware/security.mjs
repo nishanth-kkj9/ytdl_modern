@@ -60,6 +60,14 @@ const ALLOWED_ORIGINS = new Set([
   `http://localhost:${config.port}`,
 ]);
 
+// The Vite dev server serves the frontend on its own origin
+// (http://localhost:5173 by default, and it drifts to 5174+ if 5173 is
+// taken), which must be able to call the API. Any loopback origin is
+// accepted: a remote site cannot spoof a localhost Origin header, and the
+// Host-header allowlist in server.mjs still restricts the server itself to
+// local binding — so this loosens nothing against cross-site requests.
+const LOOPBACK_ORIGIN_RE = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i;
+
 /**
  * Reject requests whose Origin header (when present) is not the local server.
  * Requests without an Origin header (e.g. curl, same-origin fetch) pass.
@@ -68,7 +76,7 @@ const ALLOWED_ORIGINS = new Set([
 export function originCheck() {
   return (req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    if (origin && !ALLOWED_ORIGINS.has(origin) && !LOOPBACK_ORIGIN_RE.test(origin)) {
       return res.status(403).json({ error: "Cross-origin request rejected" });
     }
     next();

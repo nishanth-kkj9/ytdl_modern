@@ -51,6 +51,7 @@ interface DownloadState {
   setSelectedQuality: (quality: string) => void;
   setProbeInfo: (info: ProbeInfo | null) => void;
   setEngineStatus: (status: EngineStatus) => void;
+  setStatusMessage: (message: string) => void;
   setMetadataResult: (result: MetadataResult | null) => void;
   addLog: (message: string, level?: "info" | "warn" | "error") => void;
   updateQueueItem: (id: string, patch: Partial<DownloadItem>) => void;
@@ -193,8 +194,13 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   setSelectedQuality: (quality) => set({ selectedQuality: quality }),
   setProbeInfo: (info) => set({ probeInfo: info, probeError: null }),
   setEngineStatus: (engineStatus) => set({ engineStatus }),
+  setStatusMessage: (statusMessage) => set({ statusMessage }),
   setMetadataResult: (result) => set({ metadataResult: result }),
   addLog: (message, level = "info") => set((state) => {
+    // Drop exact duplicates of the most recent entry. React StrictMode mounts
+    // effects twice in development, so every engine event used to be handled
+    // (and logged) by two live subscriptions — doubling log lines.
+    if (state.logs[0]?.message === message) return state;
     const seq = state._logSeq + 1;
     return {
       _logSeq: seq,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { openPath, revealItemInDir } from "../api/transport";
+import { openPath } from "../api/transport";
 import { useDownloadStore } from "../stores/downloadStore";
 import { DownloadItem, HistoryItem } from "../types";
 import { isSafeThumbnail } from "../utils";
@@ -86,34 +86,20 @@ export function SidebarItem({ item, isActive }: SidebarItemProps) {
 
         <div className={`mt-1 flex items-center gap-1 transition ${isActive ? "opacity-100" : "opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"}`}>
           {hasFilepath && (
-            <>
-              <button
-                type="button"
-                aria-label="Open file"
-                onClick={async () => {
-                  try { await openPath(item.filepath!); } catch (e) { addLog(`Open error: ${e}`, "error"); }
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-raised hover:text-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-video/60"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 10v-4c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                aria-label="Reveal in folder"
-                onClick={async () => {
-                  try { await revealItemInDir(item.filepath!); } catch (e) { addLog(`Folder error: ${e}`, "error"); }
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-raised hover:text-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-video/60"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-                </svg>
-              </button>
-            </>
+            <button
+              type="button"
+              aria-label="Open file"
+              onClick={async () => {
+                try { await openPath(item.filepath!); } catch (e) { addLog(`Open error: ${e}`, "error"); }
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-raised hover:text-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-video/60"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 10v-4c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </button>
           )}
           {isDownloadItem && status === "failed" && (
             <button

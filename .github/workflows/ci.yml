@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   frontend:
     name: Frontend (TypeScript + Vite)
@@ -77,6 +80,8 @@ jobs:
           node tests/engineManager.test.mjs
           node tests/historyService.test.mjs
           node tests/routes.test.mjs
+          node tests/validate.test.mjs
+          node tests/security.test.mjs
 
   python:
     name: Python Engine
