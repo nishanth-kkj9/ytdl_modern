@@ -105,7 +105,7 @@ All endpoints are local-only (`127.0.0.1:3000`).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/health` | Returns `{ "ok": true }` |
+| `GET` | `/api/health` | Returns `{ "ok": true, "engineReady": <bool> }` — server liveness + engine readiness |
 | `GET` | `/api/status` | Engine readiness, tool availability, active jobs, pending-command backlog, version, uptime |
 | `POST` | `/api/probe` | Fetch video metadata (result via WebSocket) |
 | `POST` | `/api/download` | Start a download |

@@ -65,8 +65,13 @@ async function main() {
   app.use("/api/status", statusRouter(engine));
   app.use("/api/engine/restart", originCheck(), rateLimit({ maxRequests: 5, windowMs: 10_000 }), restartRouter(engine));
 
-  // Health check.
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  // Health check. Liveness ping for the Node process AND a peek at engine
+  // readiness in one call — lets a monitor distinguish "server up but engine
+  // crashed" from "everything healthy". `ok` reflects only the server itself
+  // so a dead engine never looks like a dead server.
+  app.get("/api/health", (_req, res) =>
+    res.json({ ok: true, engineReady: engine.isReady() })
+  );
 
   // Static frontend + downloads.
   app.use(staticMiddleware(config));
