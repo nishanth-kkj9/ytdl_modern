@@ -254,6 +254,12 @@ export class EngineManager {
     return this.readyTools;
   }
 
+  // Number of commands queued while the engine is down or starting up.
+  // Exposed via /api/status so the UI can show engine backlog pressure.
+  getPendingCount() {
+    return this.pendingCommands.length;
+  }
+
   stop() {
     if (this.child) {
       this.child.kill();

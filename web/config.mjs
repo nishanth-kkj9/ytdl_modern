@@ -1,8 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+// Read the web package version at startup (throws only if package.json is missing).
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 /**
  * Central configuration for the YTDL Web server.
@@ -12,6 +15,8 @@ export const config = {
   // Server
   port: Number(process.env.PORT || 3000),
   host: process.env.HOST || "127.0.0.1",
+  // Human-readable version exposed by /api/status (single source: web/package.json).
+  version: pkg?.version || "0.0.0",
 
   // Paths
   projectRoot,

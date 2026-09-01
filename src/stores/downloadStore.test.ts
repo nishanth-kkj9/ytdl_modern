@@ -21,6 +21,7 @@ describe("downloadStore", () => {
       probeInfo: null,
       probeError: null,
       engineStatus: "starting",
+      statusMessage: "",
       logs: [],
       metadataResult: null,
       _logSeq: 0,
@@ -84,6 +85,31 @@ describe("downloadStore", () => {
       });
     }
     expect(useDownloadStore.getState().history.length).toBe(100);
+  });
+
+  it("cancelDownload surfaces a failed cancel in statusMessage", async () => {
+    invoke.mockRejectedValueOnce(new Error("engine down"));
+    useDownloadStore.setState({
+      queue: [
+        {
+          id: "d2",
+          url: "https://example.com",
+          title: "T",
+          format: "mp3",
+          quality: "high",
+          status: "downloading",
+          progress: 10,
+          downloaded: 1,
+          total: 10,
+          speed: 1,
+          type: "audio",
+        },
+      ],
+    });
+    await useDownloadStore.getState().cancelDownload("d2");
+    const s = useDownloadStore.getState();
+    expect(s.statusMessage).toBe("Failed to cancel download.");
+    expect(s.logs[0]?.level).toBe("error");
   });
 
   it("restartEngine invokes the restart command", async () => {

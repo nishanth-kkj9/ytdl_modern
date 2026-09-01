@@ -30,8 +30,13 @@ class JsonHistoryService {
     return this;
   }
 
-  async loadHistory(limit = 100) {
-    return this.records.slice(0, limit);
+  /**
+   * Load history records, newest first, with optional pagination.
+   * @param {number} limit Max records to return (default 100).
+   * @param {number} offset Skip the first `offset` newest-first records.
+   */
+  async loadHistory(limit = 100, offset = 0) {
+    return this.records.slice(offset, offset + limit);
   }
 
   /**

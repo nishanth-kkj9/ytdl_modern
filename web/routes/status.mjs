@@ -25,11 +25,21 @@ export function statusRouter(engineManager) {
     }
     res.json({
       server: "ytdl-modern-web",
+      version: config.version,
+      // Seconds since the Node.js process started (monotonic-ish; resets on
+      // server restart). Lets the UI/dashboards detect a silently restarted
+      // server even when everything else looks identical.
+      uptimeSeconds: Math.floor(process.uptime()),
       engineReady: engineManager.isReady(),
       downloadDir: config.downloadsDir,
       // Tool availability surfaced from the last engine_ready message
       // (null/absent until the engine first reports readiness).
       tools,
+      // Commands queued while the engine is down/starting (backlog pressure,
+      // capped by config.engineMaxPendingCommands).
+      pendingCommands: engineManager.getPendingCount
+        ? engineManager.getPendingCount()
+        : 0,
       activeJobs,
     });
   });

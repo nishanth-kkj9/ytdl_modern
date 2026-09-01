@@ -37,6 +37,10 @@ Paste a YouTube link, probe for metadata, pick your format, and download.
 
 ### Install
 
+Use a virtual environment for the Python engine — it keeps the pinned,
+hash-locked dependencies (see `requirements.lock`) out of your global Python
+and avoids PATH conflicts with yt-dlp/FFmpeg:
+
 ```bash
 # Frontend
 npm install
@@ -44,7 +48,10 @@ npm install
 # Backend
 cd web && npm install && cd ..
 
-# Python engine (pinned versions with hashes)
+# Python engine (pinned versions with hashes) — in a venv
+python -m venv venv
+# Windows:  venv\Scripts\activate
+# macOS/Linux: source venv/bin/activate
 pip install -r python-engine/requirements.lock
 ```
 
@@ -99,11 +106,11 @@ All endpoints are local-only (`127.0.0.1:3000`).
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Returns `{ "ok": true }` |
-| `GET` | `/api/status` | Engine readiness + download directory |
+| `GET` | `/api/status` | Engine readiness, tool availability, active jobs, pending-command backlog, version, uptime |
 | `POST` | `/api/probe` | Fetch video metadata (result via WebSocket) |
 | `POST` | `/api/download` | Start a download |
 | `POST` | `/api/download/cancel` | Cancel an active download |
-| `GET` | `/api/history` | List download history (max 100) |
+| `GET` | `/api/history` | List download history — optional `?limit=` (max 200, default 100) + `?offset=` for paging |
 | `POST` | `/api/history` | Save a history record |
 | `DELETE` | `/api/history` | Clear all history |
 
@@ -236,6 +243,24 @@ ytdl_modern/
   downloads/              # Downloaded media files
   logs/                   # Python engine logs
 ```
+
+## Troubleshooting
+
+- **FFmpeg not found / format verification fails** — install FFmpeg and make
+  sure `ffmpeg` is on `PATH`, or point the engine at it via the `FFMPEG_PATH` /
+  `FFMPEG_HOME` env vars. The live log panel shows `ffmpeg=no` when the engine
+  cannot find it.
+- **Engine crashes immediately on start** — check `logs/ytdl_pro_*.log` (Python
+  file logger with rotation) and `web` server output. The web UI also shows a
+  "Restart engine" control that calls `POST /api/engine/restart`.
+- **Python dependency errors** — install into a fresh venv from
+  `requirements.lock` (pinned + hash-locked). If you mix in global packages,
+  conflicting `yt-dlp` versions frequently break extraction.
+- **Port 3000 already in use** — set `PORT` (e.g. `$env:PORT=3100`) before
+  starting; Vite's dev proxy forwards `/api`, `/downloads`, `/ws` to whatever
+  port `web/config.mjs` resolves.
+- **Serving a stale UI** — `npm run build` outputs to `dist/`; the backend only
+  serves the latest build after a rebuild + restart.
 
 ## License
 

@@ -151,6 +151,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       get().addLog(`Cancel requested: ${id}`);
     } catch (error) {
       get().addLog(`cancel_download error: ${String(error)}`, "error");
+      set({ statusMessage: "Failed to cancel download." });
     }
   },
 

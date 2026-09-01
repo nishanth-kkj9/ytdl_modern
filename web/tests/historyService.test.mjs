@@ -93,4 +93,19 @@ async function makeService() {
   console.log("✓ concurrent save serialization");
 }
 
+// Test 7: loadHistory supports offset pagination (newest first)
+{
+  const { svc } = await makeService();
+  for (let i = 0; i < 15; i++) {
+    await svc.saveRecord({ id: `p-${i}`, title: `T${i}` });
+  }
+  const page = await svc.loadHistory(10, 5);
+  assert.strictEqual(page.length, 10, "Page should return exactly `limit` records");
+  assert.strictEqual(page[0].id, "p-9", "Offset skips the newest records first");
+  assert.strictEqual(page[9].id, "p-0", "Page should end at the oldest record");
+  const beyond = await svc.loadHistory(10, 100);
+  assert.strictEqual(beyond.length, 0, "Offset past the end returns an empty page");
+  console.log("✓ offset pagination");
+}
+
 console.log("All historyService tests passed.");

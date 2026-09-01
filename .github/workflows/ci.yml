@@ -85,7 +85,9 @@ jobs:
         run: |
           node tests/engineManager.test.mjs
           node tests/historyService.test.mjs
+          node tests/historyRoutes.test.mjs
           node tests/routes.test.mjs
+          node tests/status.test.mjs
           node tests/validate.test.mjs
           node tests/security.test.mjs
           node tests/static.test.mjs
