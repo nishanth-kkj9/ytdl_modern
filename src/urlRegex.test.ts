@@ -14,6 +14,11 @@ const ACCEPT = [
   "https://www.youtube.com/v/dQw4w9WgXcQ",
   "youtube.com/watch?v=dQw4w9WgXcQ",
   "https://www.youtube.com/watch?app=desktop&v=dQw4w9WgXcQ",
+  // Mobile (m.youtube.com) links — copy-pasted mobile URLs used to be
+  // rejected as "Only YouTube URLs are supported".
+  "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+  "m.youtube.com/watch?v=dQw4w9WgXcQ",
+  "https://m.youtube.com/shorts/dQw4w9WgXcQ",
 ];
 
 const REJECT = [

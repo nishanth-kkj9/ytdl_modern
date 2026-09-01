@@ -48,10 +48,11 @@ Then 5, then 6. No plan depends on another.
   deno discovery all in one file). It has tests and works; splitting is a
   nice-to-have refactor, not a priority. Do it only when adding a feature
   that touches the file anyway.
-- **Express 4 → 5 migration.** `web/middleware/static.mjs:23` uses
-  `router.get("*")`, which breaks under Express 5's path-to-regexp v8.
-  Pinned to `^4.19.2` so no urgency; when upgrading, change to a regex or
-  `/{*splat}` wildcard.
+- **Express 4 → 5 migration.** ~~`web/middleware/static.mjs` uses
+  `router.get("*")`, which breaks under Express 5's path-to-regexp v8.~~
+  **RESOLVED (2026-09-01):** Dependabot bumped `web` to Express 5.2.1, which
+  would have crashed the server at startup. Fixed with the `/{*splat}`
+  wildcard; regression test in `web/tests/static.test.mjs` (CI backend job).
 - **Frontend test suite is slow (~55s)** due to jsdom setup overhead in
   Vitest. Functional, not worth optimizing now.
 

@@ -34,6 +34,18 @@ class JsonHistoryService {
     return this.records.slice(0, limit);
   }
 
+  /**
+   * Crash-safe write: write to a temp file first, then atomically rename it
+   * over the target. A crash mid-write can only ever leave the temp file
+   * behind — history.json itself stays valid (either old or new content),
+   * never truncated/corrupt.
+   */
+  async _writeFile(content) {
+    const tmp = `${this.file}.tmp`;
+    await fs.writeFile(tmp, content, "utf8");
+    await fs.rename(tmp, this.file);
+  }
+
   async saveRecord(record) {
     // Chain onto the queue: each save (mutation + file write) runs to
     // completion before the next one starts, preventing data loss.
@@ -48,7 +60,7 @@ class JsonHistoryService {
       if (this.records.length > 100) {
         this.records = this.records.slice(0, 100);
       }
-      await fs.writeFile(this.file, JSON.stringify(this.records, null, 2), "utf8");
+      await this._writeFile(JSON.stringify(this.records, null, 2));
     });
 
     // Keep the queue alive even if one write fails.
@@ -63,7 +75,7 @@ class JsonHistoryService {
   async clear() {
     this._writeQueue = this._writeQueue.then(async () => {
       this.records = [];
-      await fs.writeFile(this.file, JSON.stringify([], null, 2), "utf8");
+      await this._writeFile(JSON.stringify([], null, 2));
     });
     await this._writeQueue;
   }

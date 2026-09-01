@@ -6,7 +6,7 @@
 // copy only gates the Probe/Add buttons. src/urlRegex.test.ts pins both
 // patterns to the same fixture set — update both together.
 export const YOUTUBE_REGEX =
-  /^(?:https?:\/\/)?(?:www\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
+  /^(?:https?:\/\/)?(?:(?:www|m)\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
 
 export const MAX_URL_LENGTH = 2048;
 
