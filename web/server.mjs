@@ -174,9 +174,17 @@ async function main() {
   process.on("SIGTERM", shutdown);
 
   // ── Error handling middleware ───────────────────────────────────────────
+  // Preserve the status code that upstream layers attached to the error
+  // (e.g. 404 from a missing /downloads file, 400 from malformed JSON)
+  // instead of blanket-500ing every failure. Only include the message in
+  // the response when the error is explicitly marked safe to expose.
+  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
-    console.error("[server] Unhandled error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    const status = Number(err?.statusCode || err?.status) || 500;
+    if (status >= 500) console.error("[server] Unhandled error:", err);
+    res.status(status).json({
+      error: status >= 500 || !err?.expose ? "Internal server error" : err.message,
+    });
   });
 
   // ── Listen ──────────────────────────────────────────────────────────────
