@@ -131,6 +131,25 @@ describe("useEngineEvents — status message flow", () => {
 
   it("sets a message on cancelled and engine error events", async () => {
     await setup();
+    // Seed a download item so the error event takes the download path (a
+    // non-queued id is treated as a probe failure — covered separately).
+    useDownloadStore.setState({
+      queue: [
+        {
+          id: "d1",
+          url: "https://youtu.be/x",
+          title: "T",
+          format: "mp3",
+          quality: "high",
+          status: "downloading",
+          progress: 0,
+          downloaded: 0,
+          total: 0,
+          speed: 0,
+          type: "audio",
+        },
+      ],
+    });
     emit("cancelled", { type: "cancelled", id: "d1" });
     expect(useDownloadStore.getState().statusMessage).toBe("Download cancelled.");
     emit("error", { type: "error", id: "d1", error: "x" });
@@ -171,6 +190,50 @@ describe("useEngineEvents — status message flow", () => {
         .getState()
         .logs.some((l) => l.level === "warn" && l.message.includes("temporary network blip"))
     ).toBe(true);
+  });
+
+  it("labels a probe failure as Probe failed (no queue item)", async () => {
+    await setup();
+    emit("error", {
+      type: "error",
+      id: "probe-1",
+      error_type: "ProbeError",
+      error: "unavailable",
+    });
+    // No queue item → not "Download failed."
+    expect(useDownloadStore.getState().statusMessage).toBe("Probe failed.");
+    expect(useDownloadStore.getState().queue.length).toBe(0);
+  });
+
+  it("labels a download failure as Download failed when the id is queued", async () => {
+    await setup();
+    useDownloadStore.setState({
+      queue: [
+        {
+          id: "d1",
+          url: "https://youtu.be/x",
+          title: "T",
+          format: "mp3",
+          quality: "high",
+          status: "downloading",
+          progress: 10,
+          downloaded: 1,
+          total: 10,
+          speed: 1,
+          type: "audio",
+        },
+      ],
+    });
+    emit("error", {
+      type: "error",
+      id: "d1",
+      error_type: "DownloadError",
+      error: "mux failed",
+    });
+    const s = useDownloadStore.getState();
+    expect(s.statusMessage).toBe("Download failed.");
+    expect(s.queue[0]?.status).toBe("failed");
+    expect(s.queue[0]?.message).toBe("mux failed");
   });
 
   it("updates the message when a probe result arrives", async () => {

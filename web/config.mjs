@@ -37,3 +37,24 @@ export const config = {
   // Upper bound on queued engine commands when the engine is unavailable.
   engineMaxPendingCommands: Number(process.env.ENGINE_MAX_PENDING || 100),
 };
+
+// ── Loopback allowlists (single source of truth) ─────────────────────────────
+// server.mjs (Host-header rebinding guard) and middleware/security.mjs (Origin
+// check) must never drift apart, so both build their sets from these helpers.
+// If `host` is overridden to expose the server beyond loopback, these sets must
+// be extended deliberately — see the comment in server.mjs.
+export function allowedHostsFor(port = config.port) {
+  return new Set([
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    "127.0.0.1",
+    "localhost",
+    `[::1]:${port}`,
+    "[::1]",
+    "::1",
+  ]);
+}
+
+export function allowedOriginsFor(port = config.port) {
+  return new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+}

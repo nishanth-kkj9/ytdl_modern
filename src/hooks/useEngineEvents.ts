@@ -178,9 +178,22 @@ export function useEngineEvents() {
             return;
           }
           case "error": {
-            updateQueueItem(id, { status: "failed", message: String(payload.error ?? "Error") });
-            addLog(`Engine error: ${String(payload.error_type ?? "")}: ${String(payload.error ?? "")}`);
-            setStatusMessage("Download failed.");
+            const errMsg = String(payload.error ?? "Error");
+            // Probe failures arrive as `error` events carrying a probe id that
+            // is never added to the download queue. Label them correctly —
+            // otherwise every failed probe flashes "Download failed.".
+            const isDownloadItem = useDownloadStore
+              .getState()
+              .queue.some((qi) => qi.id === id);
+            addLog(`Engine error: ${String(payload.error_type ?? "")}: ${errMsg}`);
+            if (isDownloadItem) {
+              updateQueueItem(id, { status: "failed", message: errMsg });
+              setStatusMessage("Download failed.");
+            } else if (id) {
+              setStatusMessage("Probe failed.");
+            } else {
+              setStatusMessage("Engine error.");
+            }
             return;
           }
           case "engine_crashed": {

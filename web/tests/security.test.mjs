@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import { allowedOriginsFor, allowedHostsFor } from "../config.mjs";
 import { originCheck } from "../middleware/security.mjs";
 
 // ── originCheck middleware ─────────────────────────────────────────────────────
@@ -59,6 +60,22 @@ function run(origin) {
     assert.deepStrictEqual(r.body, { error: "Cross-origin request rejected" });
   }
   console.log("✓ origin: foreign origins rejected with 403");
+}
+
+// Test 5: the shared allowlist helpers (single source of truth for the Host
+// and Origin rebinding guards) produce consistent, port-sensitive sets.
+{
+  const hosts = allowedHostsFor(3100);
+  assert.ok(hosts.has("127.0.0.1:3100"));
+  assert.ok(hosts.has("localhost:3100"));
+  assert.ok(hosts.has("[::1]:3100"));
+  assert.ok(hosts.has("127.0.0.1"));
+  assert.ok(!hosts.has("127.0.0.1:3000"), "port must be parameterized");
+  const origins = allowedOriginsFor(3100);
+  assert.ok(origins.has("http://127.0.0.1:3100"));
+  assert.ok(origins.has("http://localhost:3100"));
+  assert.ok(!origins.has("http://localhost:5173"), "non-server origins must not be allowed");
+  console.log("✓ allowlist helpers: port-parameterized + consistent");
 }
 
 console.log("All security (origin check) tests passed.");

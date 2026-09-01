@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "description": "Modular local-hosted web server for YTDL Modern",
   "main": "server.mjs",
   "scripts": {

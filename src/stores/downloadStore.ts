@@ -229,7 +229,11 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       const records = await invoke<HistoryItem[]>("load_history");
       set({ history: records });
     } catch (e) {
+      // Surface history load failures instead of failing silently — the
+      // drawer shows stale "No downloads yet" otherwise.
       console.error("Failed to load history:", e);
+      get().addLog(`Failed to load history: ${String(e)}`, "warn");
+      set({ statusMessage: "Failed to load history." });
     }
   },
   clearHistory: async () => {
@@ -238,6 +242,8 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       set({ history: [] });
     } catch (e) {
       console.error("Failed to clear history:", e);
+      get().addLog(`Failed to clear history: ${String(e)}`, "warn");
+      set({ statusMessage: "Failed to clear history." });
     }
   },
 }));

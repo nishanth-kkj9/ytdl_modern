@@ -1,7 +1,7 @@
 import express from "express";
 import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { config } from "./config.mjs";
+import { config, allowedHostsFor } from "./config.mjs";
 import { EventBus } from "./eventBus.mjs";
 import { EngineManager } from "./services/engineManager.mjs";
 import { historyService } from "./services/historyService.mjs";
@@ -38,15 +38,7 @@ async function main() {
   // NOTE: This allowlist is intentionally localhost-only. If `HOST` is
   // overridden to expose the server on a LAN, LAN clients' Host headers will
   // be rejected with 421 — the server is designed to be local-hosted.
-  const allowedHosts = new Set([
-    `127.0.0.1:${config.port}`,
-    `localhost:${config.port}`,
-    "127.0.0.1",
-    "localhost",
-    "[::1]:" + config.port,
-    "[::1]",
-    "::1",
-  ]);
+  const allowedHosts = allowedHostsFor(config.port);
   app.use((req, res, next) => {
     const host = String(req.headers.host || "").toLowerCase();
     if (!allowedHosts.has(host)) {

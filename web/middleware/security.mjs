@@ -13,7 +13,7 @@
  * check so that even if CORS headers are ever added, cross-site requests
  * still fail.
  */
-import { config } from "../config.mjs";
+import { allowedOriginsFor } from "../config.mjs";
 
 // ── Rate limiter ─────────────────────────────────────────────────────────────
 
@@ -55,11 +55,6 @@ export function rateLimit({ maxRequests, windowMs }) {
 
 // ── Origin check ─────────────────────────────────────────────────────────────
 
-const ALLOWED_ORIGINS = new Set([
-  `http://127.0.0.1:${config.port}`,
-  `http://localhost:${config.port}`,
-]);
-
 // The Vite dev server serves the frontend on its own origin
 // (http://localhost:5173 by default, and it drifts to 5174+ if 5173 is
 // taken), which must be able to call the API. Any loopback origin is
@@ -67,6 +62,7 @@ const ALLOWED_ORIGINS = new Set([
 // Host-header allowlist in server.mjs still restricts the server itself to
 // local binding — so this loosens nothing against cross-site requests.
 // [::1] is included to stay symmetric with the IPv6-aware Host allowlist.
+const ALLOWED_ORIGINS = allowedOriginsFor();
 export const LOOPBACK_ORIGIN_RE = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
 
 /**
