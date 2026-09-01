@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FormatInfo, ProbeInfo } from "../types";
 import { fmtSize, fmtDuration, isSafeThumbnail } from "../utils";
 
@@ -37,10 +37,16 @@ export function ProbeCard({ info }: ProbeCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
 
-  useEffect(() => {
+  // Reset image state when a different video is probed. Uses React's
+  // "adjust state during render" pattern instead of an effect — an effect
+  // here fired a cascading extra render on every probe change
+  // (react-hooks/set-state-in-effect).
+  const [prevId, setPrevId] = useState<string | undefined>(info?.id);
+  if (prevId !== info?.id) {
+    setPrevId(info?.id);
     setImgLoaded(false);
     setImgError(false);
-  }, [info?.id]);
+  }
 
   if (!info) return null;
 

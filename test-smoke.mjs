@@ -55,10 +55,19 @@ async function run() {
   assert.strictEqual(rebindStatus, 421, "Evil Host header should return 421");
   console.log("✓ Host header validation OK");
 
-  // 5. History clear (DELETE)
-  const clearRes = await fetch(`${base}/api/history`, { method: "DELETE" }).then(r => r.json());
-  assert.strictEqual(clearRes.ok, true, "History clear failed");
-  console.log("✓ DELETE /api/history OK");
+  // 5. History clear (DELETE) — DESTRUCTIVE: wipes the server's history file.
+  //    Refuse unless the server was started with an isolated YTDL_DATA_DIR
+  //    (as CI does), or the operator explicitly opted in via
+  //    YTDL_SMOKE_ALLOW_CLEAR=1 — protects real local history by default.
+  if (!process.env.YTDL_DATA_DIR && process.env.YTDL_SMOKE_ALLOW_CLEAR !== "1") {
+    console.log(
+      "ℹ Skipping history-clear test (start the server with YTDL_DATA_DIR set to a scratch dir, or set YTDL_SMOKE_ALLOW_CLEAR=1 to allow wiping real history)"
+    );
+  } else {
+    const clearRes = await fetch(`${base}/api/history`, { method: "DELETE" }).then(r => r.json());
+    assert.strictEqual(clearRes.ok, true, "History clear failed");
+    console.log("✓ DELETE /api/history OK");
+  }
 
   // 6. Optional integration test: probe a real URL and assert a probe_result
   //    event arrives over WebSocket. Gated by YTDL_INTEGRATION=1 because it

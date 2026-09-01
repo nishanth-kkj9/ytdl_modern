@@ -37,12 +37,19 @@ jobs:
 
       - name: Create release archive
         run: |
-          mkdir -p release/ytdl-modern
+          mkdir -p release/ytdl-modern/web
           cp -r dist release/ytdl-modern/
-          cp -r web release/ytdl-modern/
+          # Curated web/ contents — NEVER copy web/node_modules or web/data/
+          # (data/ holds the local user's download history; node_modules is
+          # reinstalled by users via npm install).
+          # NOTE: New web/ modules must be added to this list.
+          cp web/server.mjs web/config.mjs web/eventBus.mjs web/validate.mjs \
+             web/package.json web/package-lock.json release/ytdl-modern/web/
+          cp -r web/routes web/services web/middleware release/ytdl-modern/web/
           cp -r python-engine release/ytdl-modern/
-          cp package.json release/ytdl-modern/
-          cp README.md release/ytdl-modern/
+          rm -rf release/ytdl-modern/python-engine/__pycache__ \
+                 release/ytdl-modern/python-engine/.pytest_cache
+          cp package.json README.md release/ytdl-modern/
           cd release
           tar -czf ytdl-modern-${{ github.ref_name }}.tar.gz ytdl-modern/
           zip -r ytdl-modern-${{ github.ref_name }}.zip ytdl-modern/

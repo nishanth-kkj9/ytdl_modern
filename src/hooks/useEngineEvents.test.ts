@@ -5,6 +5,11 @@ import { renderHook, waitFor } from "@testing-library/react";
 // resolves. Wrapped in vi.hoisted so the vi.mock factory can reference it.
 const captured = vi.hoisted(() => ({
   handler: null as null | ((message: { type: string; payload: Record<string, unknown> }) => void),
+  reconnectHandler: null as null | (() => void),
+  // Value returned by the mocked get_active_jobs invoke (reconnect tests).
+  activeJobs: [] as { id: string; status: string }[],
+  // When true, the mocked get_active_jobs invoke throws (endpoint down).
+  invokeError: false,
 }));
 
 vi.mock("../api/transport", () => ({
@@ -12,8 +17,16 @@ vi.mock("../api/transport", () => ({
     captured.handler = handler;
     return () => {};
   }),
+  onReconnect: vi.fn((handler: () => void) => {
+    captured.reconnectHandler = handler;
+    return () => {};
+  }),
   invoke: vi.fn(async (command: string) => {
     if (command === "get_download_dir") return "D:/proj/downloads";
+    if (command === "get_active_jobs") {
+      if (captured.invokeError) throw new Error("status endpoint down");
+      return captured.activeJobs;
+    }
     return {};
   }),
 }));
@@ -134,5 +147,93 @@ describe("useEngineEvents — status message flow", () => {
     });
     expect(useDownloadStore.getState().statusMessage).toBe("Probe complete.");
     expect(useDownloadStore.getState().probeInfo?.title).toBe("T");
+  });
+});
+
+describe("useEngineEvents — WS reconnect reconciliation", () => {
+  const makeItem = (id: string) => ({
+    id,
+    url: "https://youtu.be/dQw4w9WgXcQ",
+    title: "T",
+    format: "mp3",
+    quality: "high",
+    status: "downloading" as const,
+    progress: 0,
+    downloaded: 0,
+    total: 0,
+    speed: 0,
+    type: "audio" as const,
+  });
+
+  beforeEach(() => {
+    captured.handler = null;
+    captured.reconnectHandler = null;
+    captured.activeJobs = [];
+    captured.invokeError = false;
+    useDownloadStore.setState({
+      queue: [],
+      history: [],
+      probeInfo: null,
+      probeError: null,
+      engineStatus: "ready",
+      statusMessage: "",
+      logs: [],
+      metadataResult: null,
+      _logSeq: 0,
+    });
+  });
+
+  it("marks orphaned downloading items failed on reconnect, keeps active ones", async () => {
+    await setup();
+    useDownloadStore.setState({
+      queue: [makeItem("gone"), makeItem("alive")],
+    });
+    // Server reports only "alive" as still running — "gone" missed its
+    // terminal event while the WS was down.
+    captured.activeJobs = [{ id: "alive", status: "running" }];
+
+    captured.reconnectHandler?.();
+
+    await waitFor(() => {
+      const gone = useDownloadStore.getState().queue.find((i) => i.id === "gone");
+      expect(gone?.status).toBe("failed");
+    });
+    const queue = useDownloadStore.getState().queue;
+    expect(queue.find((i) => i.id === "alive")?.status).toBe("downloading");
+    expect(queue.find((i) => i.id === "gone")?.message).toBe(
+      "Connection lost — download status unknown"
+    );
+  });
+
+  it("marks all downloading items failed when the status endpoint is unreachable", async () => {
+    await setup();
+    useDownloadStore.setState({ queue: [makeItem("x")] });
+    captured.invokeError = true;
+
+    captured.reconnectHandler?.();
+
+    await waitFor(() => {
+      expect(useDownloadStore.getState().queue[0]?.status).toBe("failed");
+    });
+    expect(
+      useDownloadStore
+        .getState()
+        .logs.some((l) => l.message.includes("status unknown"))
+    ).toBe(true);
+  });
+
+  it("does nothing on reconnect when nothing is downloading", async () => {
+    await setup();
+    useDownloadStore.setState({ queue: [makeItem("idle-done")] });
+    // Flip to a terminal state — reconciliation must not touch it.
+    useDownloadStore.setState({
+      queue: [{ ...makeItem("idle-done"), status: "completed" }],
+    });
+
+    captured.reconnectHandler?.();
+    // Give the (async) handler a tick to run — it should early-return.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(useDownloadStore.getState().queue[0]?.status).toBe("completed");
   });
 });

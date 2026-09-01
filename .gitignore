@@ -54,3 +54,10 @@ web/test-output.txt
 
 # Runtime helper (backend process id written during dev sessions)
 server.pid
+*.pid
+
+# Build / tool caches
+*.tsbuildinfo
+.eslintcache
+coverage/
+.ruff_cache

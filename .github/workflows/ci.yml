@@ -25,6 +25,12 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Test frontend
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
       - name: Type-check
         run: npx tsc --noEmit
 
@@ -125,6 +131,11 @@ jobs:
     name: Smoke Tests
     runs-on: ubuntu-latest
     needs: [frontend, backend]
+    # Isolated data dir so the smoke test's history-clear (DELETE) never
+    # touches real user data (local runs are protected by the same guard in
+    # test-smoke.mjs, keyed on this env var being set).
+    env:
+      YTDL_DATA_DIR: ${{ runner.temp }}/ytdl-smoke-data
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 

@@ -79,8 +79,7 @@ export function MetadataPanel() {
 
   return (
     <section
-      className="card overflow-hidden"
-      style={{ animation: "fade-in-up 0.35s ease-out" }}
+      className="card overflow-hidden animate-fade-in-up"
     >
       <div className="border-b border-border px-5 py-4">
         <div className="flex items-center justify-between">

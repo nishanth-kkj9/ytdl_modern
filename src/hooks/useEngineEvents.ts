@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { listen, invoke, type UnlistenFn } from "../api/transport";
+import { listen, invoke, onReconnect, type UnlistenFn } from "../api/transport";
 import { useDownloadStore } from "../stores/downloadStore";
 import { FormatInfo } from "../types";
 
@@ -37,6 +37,7 @@ export function useEngineEvents() {
 
   useEffect(() => {
     let unlistenEngine: UnlistenFn | null = null;
+    let unlistenReconnect: UnlistenFn | null = null;
 
     (async () => {
       try {
@@ -202,10 +203,48 @@ export function useEngineEvents() {
           }
         }
       });
+
+      // ── WS reconnect reconciliation ────────────────────────────────────────
+      // A dropped WebSocket can swallow a download's terminal event
+      // (result/error/cancelled), leaving the item stuck "downloading" with a
+      // dead progress bar forever. On reconnect, ask the server which jobs are
+      // still active; any local "downloading" item not in that list is marked
+      // failed with an honest "status unknown" message — we never guess
+      // "completed", since the file may or may not exist.
+      unlistenReconnect = onReconnect(async () => {
+        const stale = useDownloadStore
+          .getState()
+          .queue.filter((qi) => qi.status === "downloading");
+        if (stale.length === 0) return;
+
+        let activeIds: string[] = [];
+        try {
+          const jobs = await invoke<{ id: string; status: string }[]>(
+            "get_active_jobs"
+          );
+          activeIds = (jobs ?? []).map((j) => String(j.id));
+        } catch {
+          // Status endpoint unreachable — treat every in-flight item as stale.
+        }
+
+        for (const item of stale) {
+          if (!activeIds.includes(item.id)) {
+            updateQueueItem(item.id, {
+              status: "failed",
+              message: "Connection lost — download status unknown",
+            });
+            addLog(
+              `Connection lost during download: ${item.id} — status unknown. Check history or retry.`,
+              "warn"
+            );
+          }
+        }
+      });
     })();
 
     return () => {
       unlistenEngine?.();
+      unlistenReconnect?.();
     };
   }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, updateQueueItem]);
 }
