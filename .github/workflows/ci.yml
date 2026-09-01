@@ -88,6 +88,7 @@ jobs:
           node tests/routes.test.mjs
           node tests/validate.test.mjs
           node tests/security.test.mjs
+          node tests/static.test.mjs
 
   python:
     name: Python Engine

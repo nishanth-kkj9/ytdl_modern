@@ -20,7 +20,12 @@ export function staticMiddleware(config) {
   const hasDist = distExists(config.distDir);
   if (hasDist) {
     router.use(express.static(config.distDir));
-    router.get("*", (_req, res) => {
+    // Express 5 / path-to-regexp v8: the old "*" wildcard pattern throws
+    // "Missing parameter name at index 1: *" at registration time. The
+    // braced wildcard "/{*splat}" is the v8 syntax for a catch-all SPA
+    // fallback (matches "/" and every deeper path; "/" is additionally
+    // served by express.static's index.html handling).
+    router.get("/{*splat}", (_req, res) => {
       res.sendFile(path.join(config.distDir, "index.html"));
     });
   } else {
