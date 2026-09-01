@@ -54,8 +54,7 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
 
   return (
     <section
-      className="card overflow-hidden"
-      style={{ animation: "fade-in-up 0.35s ease-out" }}
+      className="card overflow-hidden animate-fade-in-up"
       aria-label={`Downloading ${item.title || item.url}`}
     >
       <div className="px-5 py-4">

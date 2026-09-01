@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
 interface ConfirmDialogProps {
@@ -24,6 +24,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (open) cancelRef.current?.focus();
@@ -75,11 +76,11 @@ export function ConfirmDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="confirm-title"
+      aria-labelledby={titleId}
       tabIndex={-1}
     >
       <div className="mx-4 w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-2xl">
-        <h3 id="confirm-title" className="text-base font-semibold text-text">{title}</h3>
+        <h3 id={titleId} className="text-base font-semibold text-text">{title}</h3>
         <p className="mt-2 text-sm text-text-muted">{message}</p>
         <div className="mt-5 flex justify-end gap-3">
           <button
@@ -105,3 +106,4 @@ export function ConfirmDialog({
     document.body
   );
 }
+

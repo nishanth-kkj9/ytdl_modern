@@ -14,7 +14,11 @@ export type UnlistenFn = () => void;
 // ── WebSocket event bus state ────────────────────────────────────────────────
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
+// Tracks whether the socket has ever opened, so `onopen` can distinguish the
+// first connect from a reconnect (reconnects trigger state reconciliation).
+let everConnected = false;
 const eventHandlers = new Map<string, Set<(payload: any) => void>>();
+const reconnectHandlers = new Set<() => void>();
 
 function ensureWebSocket() {
   if (ws) return;
@@ -22,6 +26,19 @@ function ensureWebSocket() {
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => {
     reconnectAttempts = 0;
+    if (everConnected) {
+      // Reconnect (not first connect): a WS drop may have swallowed terminal
+      // download events (result/error/cancelled). Subscribers use this hook
+      // to reconcile queue state against the server.
+      for (const fn of [...reconnectHandlers]) {
+        try {
+          fn();
+        } catch (err) {
+          console.error("[transport] reconnect handler error:", err);
+        }
+      }
+    }
+    everConnected = true;
   };
   ws.onmessage = (msg) => {
     let data: any;
@@ -77,7 +94,8 @@ async function webFetch(url: string, method: string, body?: unknown, timeoutMs =
     if (data && data.error) throw new Error(data.error);
     return data;
   } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error(`Request timed out: ${method} ${url}`);
+    if (e?.name === "AbortError")
+      throw new Error(`Request timed out: ${method} ${url}`, { cause: e });
     throw e;
   } finally {
     clearTimeout(t);
@@ -110,6 +128,10 @@ export async function invoke<T = any>(command: string, args?: Record<string, any
       return webFetch(`${base}/api/engine/restart`, "POST", {});
     case "get_download_dir":
       return webFetch(`${base}/api/status`, "GET").then((s) => s.downloadDir);
+    case "get_active_jobs":
+      // Snapshot of active download jobs [{ id, status }] — used on WS
+      // reconnect to reconcile queue items that missed terminal events.
+      return webFetch(`${base}/api/status`, "GET").then((s) => s.activeJobs ?? []);
     case "save_history":
       return webFetch(`${base}/api/history`, "POST", args?.record);
     case "load_history":
@@ -130,6 +152,16 @@ export async function listen(event: string, handler: (payload: any) => void): Pr
   eventHandlers.get(event)!.add(handler);
   return () => {
     eventHandlers.get(event)?.delete(handler);
+  };
+}
+
+// Fires after a WebSocket RE-connect (not the initial connect), so consumers
+// can reconcile state that may have drifted while the connection was down.
+export function onReconnect(handler: () => void): UnlistenFn {
+  ensureWebSocket();
+  reconnectHandlers.add(handler);
+  return () => {
+    reconnectHandlers.delete(handler);
   };
 }
 

@@ -1,9 +1,10 @@
 /**
  * validate.mjs — shared URL validation + history record sanitization helpers.
  */
-// NOTE: the client-side copy of this pattern lives in src/components/UrlInput.tsx.
+// NOTE: the client-side copy of this pattern lives in src/components/urlRegex.ts.
 // This server-side copy is the authoritative enforcement point; the frontend
-// copy only gates the Probe/Add buttons. Keep the two in sync.
+// copy only gates the Probe/Add buttons. src/urlRegex.test.ts pins both
+// patterns to the same fixture set — update both together.
 export const YOUTUBE_REGEX =
   /^(?:https?:\/\/)?(?:www\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
 

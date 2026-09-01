@@ -128,4 +128,61 @@ function collect(bus, event) {
   assert.strictEqual(warnings.length, 0, "crashes not emitted by a spawn error path");
 }
 
+// Test 7: requestJobs resolves [] immediately when the engine is down
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.child = null;
+  mgr.stdin = null;
+  const jobs = await mgr.requestJobs(50);
+  assert.deepStrictEqual(jobs, []);
+  assert.strictEqual(mgr.pendingJobRequests.size, 0, "down engine should not register a pending request");
+}
+
+// Test 8: requestJobs resolves with the engine's jobs_result reply
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.child = {};
+  mgr.stdin = { destroyed: false };
+  let sent = null;
+  mgr._writeCommand = (cmd) => {
+    sent = cmd;
+  };
+  const promise = mgr.requestJobs(500);
+  assert.ok(sent && sent.cmd === "jobs", "requestJobs should send a jobs command");
+  assert.ok(String(sent.request_id).startsWith("jobs-"), "request_id should be namespaced");
+  mgr.handleEngineMessage({
+    type: "jobs_result",
+    request_id: sent.request_id,
+    jobs: [{ id: "a", status: "running" }],
+  });
+  const jobs = await promise;
+  assert.deepStrictEqual(jobs, [{ id: "a", status: "running" }]);
+}
+
+// Test 9: requestJobs times out to [] when the engine never replies
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.child = {};
+  mgr.stdin = { destroyed: false };
+  mgr._writeCommand = () => {};
+  const jobs = await mgr.requestJobs(30);
+  assert.deepStrictEqual(jobs, []);
+  assert.strictEqual(mgr.pendingJobRequests.size, 0, "timeout should clean up the pending map");
+}
+
+// Test 10: stop() releases in-flight jobs queries with []
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.child = { kill: () => {} };
+  mgr.stdin = { destroyed: false };
+  mgr._writeCommand = () => {};
+  const promise = mgr.requestJobs(5000);
+  mgr.stop();
+  assert.deepStrictEqual(await promise, []);
+}
+
 console.log("All engineManager tests passed.");

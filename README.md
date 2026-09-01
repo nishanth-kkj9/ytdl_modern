@@ -83,7 +83,7 @@ The Vite dev server proxies `/api`, `/downloads`, and `/ws` to the backend on po
 | `npm run build` | Type-check + production build to `dist/` |
 | `npm run preview` | Preview the production build |
 | `npm run server` | Start the Node.js backend on `:3000` |
-| `npm run test:smoke` | Run smoke tests against a running server |
+| `npm run test:smoke` | Run smoke tests against a running server. Note: the history-clear step **wipes the server's history** — it is skipped unless the server was started with `YTDL_DATA_DIR` pointing at a scratch dir, or you set `YTDL_SMOKE_ALLOW_CLEAR=1`. |
 
 Inside `web/`:
 

@@ -23,11 +23,11 @@ export function SidebarItem({ item, isActive }: SidebarItemProps) {
   const [imgError, setImgError] = useState(false);
   const thumbnailUrl = "thumbnail" in item ? item.thumbnail : undefined;
 
-  const statusColor =
-    status === "downloading" ? "#F59E0B" :
-    status === "completed" ? "#22C55E" :
-    status === "failed" ? "#EF4444" :
-    status === "cancelled" ? "#8B9CB8" : "#666666";
+  const statusColorClass =
+    status === "downloading" ? "bg-accent-audio" :
+    status === "completed" ? "bg-success" :
+    status === "failed" ? "bg-error" :
+    status === "cancelled" ? "bg-text-muted" : "bg-text-muted";
   const isPulsing = status === "downloading";
 
   const prevStatusRef = useRef(status);
@@ -133,8 +133,7 @@ export function SidebarItem({ item, isActive }: SidebarItemProps) {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-audio opacity-40" />
         )}
         <span
-          className="relative inline-flex h-2 w-2 rounded-full"
-          style={{ backgroundColor: statusColor }}
+          className={`relative inline-flex h-2 w-2 rounded-full ${statusColorClass}`}
         />
       </span>
     </div>

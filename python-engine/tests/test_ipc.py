@@ -40,3 +40,58 @@ def test_reject_windows_system_dir():
 
 def test_default_resolves_to_downloads():
     assert _resolve_output_dir("") == _BASE
+
+
+# ── `jobs` command (WS-reconnect reconciliation snapshot) ─────────────────────
+
+def _capture_jobs_reply(command: dict) -> dict:
+    """Run a command through _handle_command and return the last NDJSON reply."""
+    import io
+    import json
+    import ipc_main
+
+    buf = io.StringIO()
+    original = ipc_main._ORIGINAL_STDOUT
+    ipc_main._ORIGINAL_STDOUT = buf
+    try:
+        ipc_main._handle_command(command)
+    finally:
+        ipc_main._ORIGINAL_STDOUT = original
+
+    lines = [l for l in buf.getvalue().strip().splitlines() if l.strip()]
+    assert lines, "jobs command must produce exactly one NDJSON reply"
+    return json.loads(lines[-1])
+
+
+def test_jobs_command_reports_active_jobs():
+    import json
+    import threading
+    import ipc_main
+
+    # Seed the job map directly (as _start_download would after registration).
+    with ipc_main._LOCK:
+        ipc_main._DOWNLOAD_JOBS["job-1"] = {
+            "cancel_event": threading.Event(), "status": "running"}
+        ipc_main._DOWNLOAD_JOBS["job-2"] = {
+            "cancel_event": threading.Event(), "status": "queued"}
+    try:
+        msg = _capture_jobs_reply({"cmd": "jobs", "request_id": "r-42"})
+    finally:
+        with ipc_main._LOCK:
+            ipc_main._DOWNLOAD_JOBS.pop("job-1", None)
+            ipc_main._DOWNLOAD_JOBS.pop("job-2", None)
+
+    assert msg["type"] == "jobs_result"
+    assert msg["request_id"] == "r-42"
+    jobs = {j["id"]: j["status"] for j in msg["jobs"]}
+    assert jobs == {"job-1": "running", "job-2": "queued"}
+
+
+def test_jobs_command_empty_when_no_active_downloads():
+    import ipc_main
+
+    assert ipc_main._DOWNLOAD_JOBS == {}, "test assumes an empty job map"
+    msg = _capture_jobs_reply({"cmd": "jobs", "request_id": "r-empty"})
+    assert msg["type"] == "jobs_result"
+    assert msg["request_id"] == "r-empty"
+    assert msg["jobs"] == []

@@ -100,9 +100,12 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-border px-3 py-2">
+        <div role="tablist" aria-label="Drawer tabs" className="flex gap-1 border-b border-border px-3 py-2">
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "downloads"}
+            aria-controls="drawer-tabpanel"
             onClick={() => onTabChange("downloads")}
             className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               tab === "downloads"
@@ -114,6 +117,9 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "history"}
+            aria-controls="drawer-tabpanel"
             onClick={() => onTabChange("history")}
             className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               tab === "history"
@@ -125,7 +131,7 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div id="drawer-tabpanel" role="tabpanel" aria-label={tab === "downloads" ? "Downloads" : "History"} className="flex-1 overflow-y-auto">
           {tab === "downloads" ? (
             active.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-text-muted">No active downloads</p>

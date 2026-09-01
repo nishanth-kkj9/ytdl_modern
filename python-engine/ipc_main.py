@@ -132,6 +132,13 @@ def _probe(url: str, id_: str) -> None:
 
 
 def _run_download(id_: str, url: str, audio_format: str, quality: str, output_dir: str, mode: str, cancel_event: threading.Event) -> None:
+    # Flip the job's status to "running" once the executor picks it up, so the
+    # `jobs` snapshot distinguishes queued-but-not-started from active work.
+    with _LOCK:
+        job = _DOWNLOAD_JOBS.get(id_)
+        if job is not None:
+            job["status"] = "running"
+
     def progress_cb(status: str, downloaded: int, total: int, speed: float, filename: str) -> None:
         _write_progress(id_, status, downloaded, total, speed, filename)
 
@@ -197,12 +204,14 @@ def _start_download(command: dict[str, Any]) -> None:
     # Register the job synchronously under the lock, BEFORE submitting to the
     # executor. This closes the duplicate-ID race: two rapid same-ID commands
     # can no longer both pass the check before either is registered.
+    # `status` backs the `jobs` query command (used by the Node layer to
+    # reconcile browser state after a WebSocket reconnect).
     cancel_event = threading.Event()
     with _LOCK:
         if id_ in _DOWNLOAD_JOBS:
             _write_error(id_, "DuplicateId", f"Download id '{id_}' is already active")
             return
-        _DOWNLOAD_JOBS[id_] = {"cancel_event": cancel_event}
+        _DOWNLOAD_JOBS[id_] = {"cancel_event": cancel_event, "status": "queued"}
 
     resolved_output = _resolve_output_dir(output_dir)
     if resolved_output is None:
@@ -260,6 +269,21 @@ def _handle_command(command: dict[str, Any]) -> None:
         _PROBE_EXECUTOR.submit(_probe, url, id_)
     elif cmd == "cancel":
         _cancel(command)
+    elif cmd == "jobs":
+        # Snapshot of active download jobs — used by the Node layer on browser
+        # reconnect to reconcile queue items that may have missed terminal
+        # events while the WebSocket was down.
+        request_id = str(command.get("request_id", "")).strip()
+        with _LOCK:
+            jobs = [
+                {"id": jid, "status": job.get("status", "queued")}
+                for jid, job in _DOWNLOAD_JOBS.items()
+            ]
+        _write_message({
+            "type": "jobs_result",
+            "request_id": request_id,
+            "jobs": jobs,
+        })
     else:
         _write_error(str(command.get("id", "")), "UnknownCommand", f"Unsupported cmd: {cmd}")
 

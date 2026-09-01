@@ -28,6 +28,11 @@ export class EngineManager {
     // Cap the pending queue so a burst of commands (or a long engine outage)
     // cannot grow memory unboundedly (mirrors the history 100-record cap).
     this.maxPendingCommands = config.engineMaxPendingCommands;
+    // In-flight `jobs` queries awaiting a jobs_result reply, keyed by
+    // request_id. Each entry carries its timeout so a dead engine can't
+    // leave callers hanging.
+    this.pendingJobRequests = new Map();
+    this._jobRequestSeq = 0;
     // Last engine_ready payload — surfaces ffmpeg/ffprobe/deno availability.
     this.readyTools = null;
   }
@@ -43,6 +48,7 @@ export class EngineManager {
     this.restartAttempts = 0;
     this.ready = false;
     this.pendingCommands = [];
+    this._failPendingJobRequests();
     this.spawn();
     return true;
   }
@@ -116,6 +122,17 @@ export class EngineManager {
         // Flush any commands that were queued while the engine was starting.
         this.flushPending();
         break;
+      case "jobs_result": {
+        // Resolve the matching requestJobs() promise (never forwarded to the
+        // bus — this is a point-to-point reply, not a broadcast event).
+        const pending = this.pendingJobRequests.get(msg.request_id);
+        if (pending) {
+          this.pendingJobRequests.delete(msg.request_id);
+          clearTimeout(pending.timer);
+          pending.resolve(Array.isArray(msg.jobs) ? msg.jobs : []);
+        }
+        break;
+      }
       default:
         // Forward all engine events onto the bus. The WebSocket broadcaster
         // listens for these and relays them to browsers.
@@ -139,6 +156,8 @@ export class EngineManager {
           error: "Engine crashed and could not be restarted.",
         });
       }
+      // Any in-flight jobs queries can never be answered — release them.
+      this._failPendingJobRequests();
       this.bus.emit("fatal_error", {
         error: "Engine crashed and could not be restarted.",
       });
@@ -190,6 +209,41 @@ export class EngineManager {
     }
   }
 
+  // ── Active-jobs snapshot ────────────────────────────────────────────────────
+  // Queries the Python engine for its active download jobs. Used by the status
+  // route to let a reconnecting browser reconcile queue items that may have
+  // missed terminal events while its WebSocket was down. Resolves to [] when
+  // the engine is unavailable (never rejects — callers must not have to guard).
+  requestJobs(timeoutMs = 500) {
+    return new Promise((resolve) => {
+      if (
+        this.fatalError ||
+        !this.child ||
+        !this.stdin ||
+        this.stdin.destroyed
+      ) {
+        resolve([]);
+        return;
+      }
+      const requestId = `jobs-${++this._jobRequestSeq}`;
+      const timer = setTimeout(() => {
+        this.pendingJobRequests.delete(requestId);
+        resolve([]);
+      }, timeoutMs);
+      this.pendingJobRequests.set(requestId, { resolve, timer });
+      this._writeCommand({ cmd: "jobs", request_id: requestId });
+    });
+  }
+
+  // Resolve all in-flight jobs queries with [] (engine down / restarting).
+  _failPendingJobRequests() {
+    for (const [requestId, pending] of this.pendingJobRequests) {
+      clearTimeout(pending.timer);
+      pending.resolve([]);
+      this.pendingJobRequests.delete(requestId);
+    }
+  }
+
   isReady() {
     return !!this.child && this.ready;
   }
@@ -207,5 +261,6 @@ export class EngineManager {
       this.stdin = null;
     }
     this.pendingCommands = [];
+    this._failPendingJobRequests();
   }
 }

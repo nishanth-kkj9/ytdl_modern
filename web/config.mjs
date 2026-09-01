@@ -18,8 +18,13 @@ export const config = {
   distDir: path.join(projectRoot, "dist"),
   engineEntry: path.join(projectRoot, "python-engine", "ipc_main.py"),
   downloadsDir: path.join(projectRoot, "downloads"),
-  dataDir: path.join(__dirname, "data"),
-  historyFile: path.join(__dirname, "data", "history.json"),
+  // Overridable so smoke tests (which DELETE history) can run against an
+  // isolated scratch directory instead of the user's real web/data/history.json.
+  dataDir: process.env.YTDL_DATA_DIR || path.join(__dirname, "data"),
+  historyFile: path.join(
+    process.env.YTDL_DATA_DIR || path.join(__dirname, "data"),
+    "history.json"
+  ),
 
   // Engine
   engineCwd: path.join(projectRoot, "python-engine"),
