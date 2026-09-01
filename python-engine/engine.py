@@ -286,6 +286,8 @@ _ALLOWED_THUMBNAIL_DOMAINS = (".ytimg.com", ".googleusercontent.com", ".googlevi
 
 def _is_safe_thumbnail_url(url: str) -> bool:
     """Only fetch thumbnails from YouTube's known CDN domains (SSRF guard)."""
+    if not isinstance(url, str) or len(url) > 2048:
+        return False
     try:
         hostname = urlparse(url).hostname or ""
         return hostname.endswith(_ALLOWED_THUMBNAIL_DOMAINS)
@@ -1112,8 +1114,15 @@ class AudioDownloadEngine:
         applog.log_probe_error(url, classify_error_type(last_err), last_err)
         return None, last_err
 
-    def download(self, url: str, info: dict | None = None) -> DownloadResult:
-        """Download with automatic retry (exponential back-off)."""
+    def download(self, url: str, info: dict | None = None,
+                 retry_cb=None) -> DownloadResult:
+        """Download with automatic retry (exponential back-off).
+
+        `retry_cb(attempt, delay_seconds, error_msg)` is invoked before each
+        automatic retry so the caller can surface in-progress retries to the
+        user — the UI otherwise looks frozen while yt-dlp waits out back-off.
+        The callback is best-effort: a raise inside it is logged and ignored.
+        """
         retry = RetryStrategy(max_retries=3, initial_delay=2.0)
         last_exc: Exception = RuntimeError("unknown")
 
@@ -1127,6 +1136,11 @@ class AudioDownloadEngine:
                 delay = retry.next_delay()
                 applog.warn(f"Download attempt failed, retrying in {delay:.1f}s: "
                             f"{str(exc)[:120]}")
+                if retry_cb is not None:
+                    try:
+                        retry_cb(retry._attempt, delay, str(exc)[:300])
+                    except Exception:
+                        applog.warn("retry callback failed")
                 time.sleep(delay)
 
         error_msg  = str(last_exc)

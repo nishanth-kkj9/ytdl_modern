@@ -106,6 +106,7 @@ async function main() {
     "result",
     "cancelled",
     "error",
+    "download_retry",
   ];
   const unsubs = eventTypes.map((type) =>
     bus.subscribe(type, (payload) => broadcast({ type, payload }))

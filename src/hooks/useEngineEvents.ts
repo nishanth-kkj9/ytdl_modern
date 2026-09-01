@@ -110,6 +110,18 @@ export function useEngineEvents() {
             });
             return;
           }
+          case "download_retry": {
+            // Automatic engine retry in progress — surface the attempt and how
+            // long the user will wait so the download doesn't look frozen.
+            const attempt = Number(payload.attempt ?? 0);
+            const delay = Number(payload.delay_seconds ?? 0);
+            updateQueueItem(id, { message: `Retrying (attempt ${attempt})…` });
+            addLog(
+              `Download retrying (attempt ${attempt}) in ${delay}s — ${String(payload.error ?? "")}`,
+              "warn"
+            );
+            return;
+          }
           case "result": {
             const success = Boolean(payload.success ?? false);
             const fmt = String(payload.fmt ?? "");

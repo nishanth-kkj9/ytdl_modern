@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine import (  # noqa: E402
     AudioDownloadEngine,
+    DownloadResult,
     _is_safe_thumbnail_url,
     _download_bytes,
     _merge_missing_info,
@@ -46,6 +47,10 @@ def test_custom_output_dir():
 def test_safe_thumbnail_domains():
     assert _is_safe_thumbnail_url("https://i.ytimg.com/vi/abc/maxresdefault.jpg")
     assert _is_safe_thumbnail_url("https://lh3.googleusercontent.com/foo")
+    # Length guard: absurdly long URLs are rejected even on allowed domains.
+    assert not _is_safe_thumbnail_url("https://i.ytimg.com/" + "a" * 3000)
+    # Non-string input must not raise.
+    assert not _is_safe_thumbnail_url(12345)
 
 
 # ── _merge_missing_info (audio-retry info restoration) ────────────────────────
@@ -194,3 +199,59 @@ def test_download_options_secure_by_default():
     assert "prefer_insecure" not in opts, (
         "_build_opts() must not set prefer_insecure"
     )
+
+
+# ── Automatic retry visibility (download_retry event plumbing) ────────────────
+
+def test_download_retry_cb_notified_on_retry(monkeypatch):
+    """Regression: automatic retries inside download() must be surfaced via
+    retry_cb so the UI can tell the user the download is retrying rather than
+    appearing frozen during exponential back-off."""
+    import time
+
+    engine = AudioDownloadEngine(audio_format="mp3", quality="high", mode="audio")
+    failures = [RuntimeError("temporary network blip"), RuntimeError("rate limited")]
+    calls: list[tuple[int, float, str]] = []
+
+    def fake_download_once(url, info=None):
+        if failures:
+            raise failures.pop(0)
+        return DownloadResult(success=True, url=url, title="T")
+
+    monkeypatch.setattr(engine, "_download_once", fake_download_once)
+    # Don't actually sleep through the back-off waits during the test.
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = engine.download(
+        "https://youtu.be/dQw4w9WgXcQ",
+        retry_cb=lambda attempt, delay, err: calls.append((attempt, delay, err)),
+    )
+
+    assert result.success, "Download should succeed after two automatic retries"
+    assert len(calls) == 2, "retry_cb should fire once per automatic retry"
+    assert calls[0][0] == 1 and calls[0][1] == 2.0, "first retry: attempt 1, 2s wait"
+    assert calls[1][0] == 2 and calls[1][1] == 4.0, "second retry: attempt 2, 4s wait"
+    assert "blip" in calls[0][2], "retry_cb should carry the underlying error message"
+
+
+def test_download_retry_cb_not_called_without_retries(monkeypatch):
+    """A clean first-attempt success must never invoke retry_cb."""
+    import time
+
+    engine = AudioDownloadEngine(audio_format="mp3", quality="high", mode="audio")
+    calls: list[tuple[int, float, str]] = []
+
+    monkeypatch.setattr(
+        engine,
+        "_download_once",
+        lambda url, info=None: DownloadResult(success=True, url=url, title="T"),
+    )
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = engine.download(
+        "https://youtu.be/dQw4w9WgXcQ",
+        retry_cb=lambda attempt, delay, err: calls.append((attempt, delay, err)),
+    )
+
+    assert result.success
+    assert calls == [], "retry_cb must not fire on a first-attempt success"

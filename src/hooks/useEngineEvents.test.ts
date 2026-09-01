@@ -137,6 +137,42 @@ describe("useEngineEvents — status message flow", () => {
     expect(useDownloadStore.getState().statusMessage).toBe("Download failed.");
   });
 
+  it("surfaces download_retry without flipping the item status", async () => {
+    await setup();
+    useDownloadStore.setState({
+      queue: [
+        {
+          id: "d1",
+          url: "https://youtu.be/x",
+          title: "T",
+          format: "mp3",
+          quality: "high",
+          status: "downloading",
+          progress: 10,
+          downloaded: 1,
+          total: 10,
+          speed: 1,
+          type: "audio",
+        },
+      ],
+    });
+    emit("download_retry", {
+      type: "download_retry",
+      id: "d1",
+      attempt: 1,
+      delay_seconds: 2,
+      error: "temporary network blip",
+    });
+    const item = useDownloadStore.getState().queue[0];
+    expect(item?.status).toBe("downloading");
+    expect(item?.message).toContain("Retrying");
+    expect(
+      useDownloadStore
+        .getState()
+        .logs.some((l) => l.level === "warn" && l.message.includes("temporary network blip"))
+    ).toBe(true);
+  });
+
   it("updates the message when a probe result arrives", async () => {
     await setup();
     emit("probe_result", {

@@ -142,6 +142,17 @@ def _run_download(id_: str, url: str, audio_format: str, quality: str, output_di
     def progress_cb(status: str, downloaded: int, total: int, speed: float, filename: str) -> None:
         _write_progress(id_, status, downloaded, total, speed, filename)
 
+    # Surface automatic retries as events so the UI can say "retrying…" instead
+    # of looking frozen during yt-dlp's exponential back-off wait.
+    def retry_cb(attempt: int, delay: float, error: str) -> None:
+        _write_message({
+            "type": "download_retry",
+            "id": id_,
+            "attempt": attempt,
+            "delay_seconds": delay,
+            "error": error,
+        })
+
     try:
         engine = AudioDownloadEngine(
             output_dir=output_dir,
@@ -153,7 +164,7 @@ def _run_download(id_: str, url: str, audio_format: str, quality: str, output_di
             embed_metadata=True,
             cover_art=True,
         )
-        result = engine.download(url)
+        result = engine.download(url, retry_cb=retry_cb)
 
         if result.success:
             _write_result(id_, result)

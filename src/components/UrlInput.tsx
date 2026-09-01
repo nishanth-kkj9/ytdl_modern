@@ -36,6 +36,7 @@ const videoQualities = [
 export function UrlInput() {
   const [url, setUrl] = useState("");
   const [probing, setProbing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const probeInfo = useDownloadStore((state) => state.probeInfo);
   const probeError = useDownloadStore((state) => state.probeError);
   const statusMessage = useDownloadStore((state) => state.statusMessage);
@@ -68,7 +69,7 @@ export function UrlInput() {
   };
 
   const handleAdd = async () => {
-    if (!isValid) return;
+    if (!isValid || adding) return;
     const meta = probeInfo ? {
       title: probeInfo.title,
       uploader: probeInfo.uploader,
@@ -77,9 +78,14 @@ export function UrlInput() {
       duration: probeInfo.duration,
       webpage_url: probeInfo.url,
     } : undefined;
-    await enqueueDownload(url.trim(), selectedFormat, selectedQuality, selectedMode, meta);
-    setUrl("");
-    setProbeInfo(null);
+    setAdding(true);
+    try {
+      await enqueueDownload(url.trim(), selectedFormat, selectedQuality, selectedMode, meta);
+      setUrl("");
+      setProbeInfo(null);
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -155,15 +161,23 @@ export function UrlInput() {
 
           <button
             type="button"
-            disabled={!isValid}
+            disabled={!isValid || adding}
             onClick={handleAdd}
-            className={`btn shrink-0 ${isAudio ? "btn-audio" : "btn-video"}`}
+            aria-busy={adding}
+            className={`btn shrink-0 ${isAudio ? "btn-audio" : "btn-video"} ${adding ? "opacity-60" : ""}`}
             title={probeInfo ? "Add to queue with selected format" : "Quick-add (no probe metadata)"}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Add
+            {adding ? (
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+                <path fill="currentColor" d="M12 12a8 8 0 018-8v3a5 5 0 00-5 5H12z" className="opacity-75" />
+              </svg>
+            ) : (
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            )}
+            {adding ? "Adding..." : "Add"}
           </button>
         </div>
 
@@ -204,6 +218,14 @@ export function UrlInput() {
           <div role="alert" className="mt-3 rounded-xl border border-error/30 bg-error/10 px-4 py-3">
             <p className="text-xs font-semibold text-error">Probe failed</p>
             <p className="mt-1 text-xs text-error/90">{probeError}</p>
+            <button
+              type="button"
+              onClick={handleProbe}
+              disabled={probing || !isValid}
+              className="mt-2 text-xs font-medium text-error underline underline-offset-2 disabled:opacity-50 disabled:no-underline"
+            >
+              {probing ? "Probing…" : "Retry probe"}
+            </button>
           </div>
         )}
       </div>
