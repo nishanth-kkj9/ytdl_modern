@@ -66,7 +66,8 @@ const ALLOWED_ORIGINS = new Set([
 // accepted: a remote site cannot spoof a localhost Origin header, and the
 // Host-header allowlist in server.mjs still restricts the server itself to
 // local binding — so this loosens nothing against cross-site requests.
-const LOOPBACK_ORIGIN_RE = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i;
+// [::1] is included to stay symmetric with the IPv6-aware Host allowlist.
+export const LOOPBACK_ORIGIN_RE = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
 
 /**
  * Reject requests whose Origin header (when present) is not the local server.
@@ -81,4 +82,27 @@ export function originCheck() {
     }
     next();
   };
+}
+
+// ── WebSocket origin check ───────────────────────────────────────────────────
+
+/**
+ * verifyClient handler for the /ws WebSocket upgrade. Mirrors the REST
+ * originCheck() policy: clients that send no Origin header (native tools,
+ * non-browser clients) and any loopback origin are allowed; foreign origins
+ * are rejected before the upgrade completes (403). Without this, any web
+ * page open in the user's browser could open ws://127.0.0.1:3000/ws and
+ * passively eavesdrop on every server broadcast (download paths, titles,
+ * engine logs) — the read-side CSWSH gap originCheck() didn't cover.
+ *
+ * @param {import("ws").VerifyClientCallbackInfo} info
+ * @param {(accepted: boolean, code?: number, message?: string) => void} done
+ */
+export function wsVerifyClient(info, done) {
+  const origin = info.origin;
+  if (!origin || LOOPBACK_ORIGIN_RE.test(origin)) {
+    done(true);
+    return;
+  }
+  done(false, 403, "Forbidden");
 }

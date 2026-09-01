@@ -11,7 +11,7 @@ import { historyRouter } from "./routes/history.mjs";
 import { statusRouter } from "./routes/status.mjs";
 import { restartRouter } from "./routes/restart.mjs";
 import { staticMiddleware } from "./middleware/static.mjs";
-import { rateLimit, originCheck } from "./middleware/security.mjs";
+import { rateLimit, originCheck, wsVerifyClient } from "./middleware/security.mjs";
 
 async function main() {
   // ── Core services ───────────────────────────────────────────────────────
@@ -73,7 +73,11 @@ async function main() {
 
   // ── HTTP + WebSocket server ─────────────────────────────────────────────
   const server = http.createServer(app);
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // Same loopback-origin policy as the REST originCheck() middleware: no-
+  // Origin clients and loopback origins connect; foreign origins are
+  // rejected at upgrade time (403) so other pages open in the browser
+  // cannot eavesdrop on server broadcasts (paths, titles, engine logs).
+  const wss = new WebSocketServer({ server, path: "/ws", verifyClient: wsVerifyClient });
 
   function broadcast(message) {
     const data = JSON.stringify(message);

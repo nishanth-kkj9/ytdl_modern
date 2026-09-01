@@ -41,11 +41,13 @@ function run(origin) {
 
 // Test 3 (regression): Vite dev-server origins must pass — the dev frontend
 // calls the API from http://localhost:5173 (or 5174+ if 5173 was busy).
+// IPv6 loopback is included to stay symmetric with the Host allowlist.
 {
   assert.strictEqual(run("http://localhost:5173").nextCalled, true);
   assert.strictEqual(run("http://127.0.0.1:5173").nextCalled, true);
   assert.strictEqual(run("http://localhost:5174").nextCalled, true);
-  console.log("✓ origin: loopback dev-server origins pass");
+  assert.strictEqual(run("http://[::1]:3000").nextCalled, true);
+  console.log("✓ origin: loopback dev-server origins pass (incl. IPv6)");
 }
 
 // Test 4: foreign origins are still rejected with 403
