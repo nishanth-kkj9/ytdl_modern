@@ -13,6 +13,20 @@ export interface LogEntry {
   _seq: number;
   message: string;
   level: "info" | "warn" | "error";
+  /** Epoch milliseconds when the entry was created — shown as a timestamp. */
+  timestamp: number;
+  /** Optional download/engine id extracted from the message for correlation. */
+  refId?: string;
+}
+
+export type LogLevel = LogEntry["level"];
+
+/** Extracts a download UUID from a log message if present (for correlation). */
+function extractRefId(message: string): string | undefined {
+  const match = message.match(
+    /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+  );
+  return match?.[1];
 }
 
 interface Metadata {
@@ -54,6 +68,7 @@ interface DownloadState {
   setStatusMessage: (message: string) => void;
   setMetadataResult: (result: MetadataResult | null) => void;
   addLog: (message: string, level?: "info" | "warn" | "error") => void;
+  clearLogs: () => void;
   updateQueueItem: (id: string, patch: Partial<DownloadItem>) => void;
   addHistoryItem: (record: HistoryItem) => void;
   loadHistory: () => Promise<void>;
@@ -205,9 +220,14 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     const seq = state._logSeq + 1;
     return {
       _logSeq: seq,
-      logs: [{ _seq: seq, message, level }, ...state.logs].slice(0, 50),
+      logs: [
+        { _seq: seq, message, level, timestamp: Date.now(), refId: extractRefId(message) },
+        ...state.logs,
+      ].slice(0, 50),
     };
   }),
+  // Wipes the visible log. _logSeq stays monotonic so React keys never collide.
+  clearLogs: () => set({ logs: [] }),
   updateQueueItem: (id, patch) => set((state) => ({
     queue: state.queue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
   })),
