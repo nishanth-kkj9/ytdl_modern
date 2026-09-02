@@ -74,7 +74,13 @@ export function downloadRouter(engineManager) {
     }
   });
 
-  router.post("/cancel", (req, res) => {
+  return router;
+}
+
+export function cancelRouter(engineManager) {
+  const router = Router();
+
+  router.post("/", (req, res) => {
     const id = String(req.body?.id || "").trim();
     if (!id) {
       return res.status(400).json({ error: "id is required" });

@@ -909,10 +909,6 @@ class AudioDownloadEngine:
         deno_result = self._find_deno()
         if deno_result:
             self._deno_bin = deno_result
-        has_ff = "yes" if self._ffmpeg_bin else "no"
-        ffpath = self._ffmpeg_dir or ""
-        has_deno = "yes" if self._deno_bin else "no"
-
     # ── FFmpeg detection (cached) ──────────────────────────────────────────────
 
     _FFMPEG_CACHE: tuple[str, str, str] | None = None
@@ -1454,7 +1450,15 @@ class AudioDownloadEngine:
         if os.path.exists(computed):
             return computed
 
-        # 3. Scan downloads dir for a matching-extension file created during
+        # 3. yt-dlp records the postprocessed path per requested download.
+        # Prefer this deterministic source before scanning a shared directory.
+        requested = info.get("requested_downloads")
+        if isinstance(requested, list) and requested:
+            filepath = requested[-1].get("filepath") if isinstance(requested[-1], dict) else None
+            if isinstance(filepath, str) and os.path.exists(filepath):
+                return filepath
+
+        # 4. Scan downloads dir for a matching-extension file created during
         #    this download. Prefer files newer than the download start time so
         #    concurrent same-format downloads don't resolve to the wrong file.
         try:

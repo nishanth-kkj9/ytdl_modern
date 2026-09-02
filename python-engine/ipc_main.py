@@ -20,7 +20,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from engine import AudioDownloadEngine, DownloadResult, classify_error_type
+from engine import AudioDownloadEngine, DownloadResult, classify_error_type, _MUTAGEN_OK, _YDL_OK
 
 _YDL_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,6 +38,8 @@ def _emit_ready() -> None:
         "ffmpeg": bool(ffmpeg),
         "ffprobe": bool(ffprobe),
         "deno": bool(deno),
+        "yt_dlp": _YDL_OK,
+        "mutagen": _MUTAGEN_OK,
     })
 
 _DOWNLOAD_JOBS: dict[str, dict[str, Any]] = {}
@@ -123,7 +125,12 @@ def _probe(url: str, id_: str) -> None:
                 "info": info,
             })
         else:
-            if not error:
+            if not _YDL_OK:
+                error = (
+                    "yt-dlp is not installed in the Python interpreter running the engine "
+                    f"({sys.executable}). Install: pip install -r python-engine/requirements.lock"
+                )
+            elif not error:
                 error = "Probe returned no info; verify network, yt-dlp, and URL compatibility."
             error_type = classify_error_type(error)
             _write_error(id_, error_type, error)

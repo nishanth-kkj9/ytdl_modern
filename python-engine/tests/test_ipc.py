@@ -95,3 +95,45 @@ def test_jobs_command_empty_when_no_active_downloads():
     assert msg["type"] == "jobs_result"
     assert msg["request_id"] == "r-empty"
     assert msg["jobs"] == []
+
+
+# ── Engine readiness and missing-dependency diagnostics (DX-01) ──────────────
+
+def test_ready_message_reports_core_python_dependency_flags(monkeypatch):
+    """The readiness handshake must expose both required Python libraries."""
+    import io
+    import json
+    import ipc_main
+
+    buf = io.StringIO()
+    monkeypatch.setattr(ipc_main, "_ORIGINAL_STDOUT", buf)
+    monkeypatch.setattr(ipc_main, "_YDL_OK", False)
+    monkeypatch.setattr(ipc_main, "_MUTAGEN_OK", True)
+    ipc_main._emit_ready()
+
+    msg = json.loads(buf.getvalue())
+    assert msg["type"] == "engine_ready"
+    assert msg["yt_dlp"] is False
+    assert msg["mutagen"] is True
+
+
+def test_probe_reports_missing_yt_dlp_from_the_running_interpreter(monkeypatch):
+    """Corrected DX-01 behavior: do not misdiagnose a missing dependency as network trouble."""
+    import io
+    import json
+    import ipc_main
+
+    class NoInfoEngine:
+        def probe(self, _url):
+            return None, ""
+
+    buf = io.StringIO()
+    monkeypatch.setattr(ipc_main, "_ORIGINAL_STDOUT", buf)
+    monkeypatch.setattr(ipc_main, "_YDL_OK", False)
+    monkeypatch.setattr(ipc_main, "AudioDownloadEngine", NoInfoEngine)
+    ipc_main._probe("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "probe-1")
+
+    msg = json.loads(buf.getvalue())
+    assert msg["type"] == "error"
+    assert "yt-dlp is not installed in the Python interpreter running the engine" in msg["error"]
+    assert "pip install -r python-engine/requirements.lock" in msg["error"]

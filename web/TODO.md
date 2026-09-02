@@ -44,8 +44,7 @@ Browser ──HTTP/WS──▶ Node.js server (web/server.mjs)
 
 ## Run It
 ```bash
-# 1. Build the frontend (once)
-cd d:/my_projects/ytdl_modern
+# 1. From the repository root, build the frontend (once)
 npm run build        # or: npx vite build
 
 # 2. Start the web server

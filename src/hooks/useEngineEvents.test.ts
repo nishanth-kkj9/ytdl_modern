@@ -82,12 +82,31 @@ describe("useEngineEvents — engine status flow", () => {
     expect(useDownloadStore.getState().engineStatus).toBe("ready");
   });
 
-  it("reflects engine_crashed as a transient starting state", async () => {
+  it("fails only in-flight downloads when the engine crashes", async () => {
     await setup();
+    useDownloadStore.setState({
+      queue: [
+        {
+          id: "interrupted", url: "https://youtu.be/x", title: "Interrupted",
+          format: "mp3", quality: "high", status: "downloading", progress: 0,
+          downloaded: 0, total: 0, speed: 0, type: "audio",
+        },
+        {
+          id: "complete", url: "https://youtu.be/y", title: "Complete",
+          format: "mp3", quality: "high", status: "completed", progress: 1,
+          downloaded: 1, total: 1, speed: 0, type: "audio",
+        },
+      ],
+    });
     emit("engine_ready", { type: "engine_ready", ready: true });
     expect(useDownloadStore.getState().engineStatus).toBe("ready");
     emit("engine_crashed", { type: "engine_crashed" });
     expect(useDownloadStore.getState().engineStatus).toBe("starting");
+    const queue = useDownloadStore.getState().queue;
+    expect(queue.find((item) => item.id === "interrupted")).toMatchObject({
+      status: "failed", message: "Engine crashed — download interrupted",
+    });
+    expect(queue.find((item) => item.id === "complete")?.status).toBe("completed");
   });
 });
 

@@ -6,7 +6,7 @@ import { EventBus } from "./eventBus.mjs";
 import { EngineManager } from "./services/engineManager.mjs";
 import { historyService } from "./services/historyService.mjs";
 import { probeRouter } from "./routes/probe.mjs";
-import { downloadRouter } from "./routes/download.mjs";
+import { cancelRouter, downloadRouter } from "./routes/download.mjs";
 import { historyRouter } from "./routes/history.mjs";
 import { statusRouter } from "./routes/status.mjs";
 import { restartRouter } from "./routes/restart.mjs";
@@ -52,6 +52,7 @@ async function main() {
   // process or compromised browser tab from flooding the engine, and to block
   // cross-site requests (defense-in-depth on top of the JSON-only body parsing).
   app.use("/api/probe", originCheck(), rateLimit({ maxRequests: 10, windowMs: 10_000 }), probeRouter(engine));
+  app.use("/api/download/cancel", originCheck(), rateLimit({ maxRequests: 21, windowMs: 10_000 }), cancelRouter(engine));
   app.use("/api/download", originCheck(), rateLimit({ maxRequests: 5, windowMs: 10_000 }), downloadRouter(engine));
   app.use("/api/history", originCheck(), historyRouter(historyService));
   app.use("/api/status", statusRouter(engine));

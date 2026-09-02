@@ -157,7 +157,7 @@ Connect to `ws://127.0.0.1:3000/ws` for live events (server-to-client only):
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `engine_ready` | `{ ffmpeg, ffprobe, deno }` | Engine started, lists available tools |
+| `engine_ready` | `{ ffmpeg, ffprobe, deno, yt_dlp, mutagen }` | Engine started, lists available tools and core Python dependencies |
 | `probe_result` | `{ id, success, info }` | Metadata from a probe request |
 | `download_started` | `{ id, url, fmt, quality }` | Download acknowledged by engine |
 | `progress` | `{ id, status, downloaded, total, speed }` | Download progress |

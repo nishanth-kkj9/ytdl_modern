@@ -63,14 +63,6 @@ def format_views(n: int | None) -> str:
     return str(n)
 
 
-def get_downloads_dir() -> str:
-    """Return (and create) the downloads/ folder next to run.py."""
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(project_root, "downloads")
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
 _WINDOWS_RESERVED = {
     "CON", "PRN", "AUX", "NUL",
     "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -97,4 +89,3 @@ def sanitize_filename(name: str) -> str:
 # REMOVED (QUAL-02): open_path/_wsl_open/_linux_open/is_wsl2 were unreachable —
 # the web frontend opens files via browser URLs (src/api/transport.ts::openPath),
 # never through this Python process.
-

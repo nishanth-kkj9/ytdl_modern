@@ -2,7 +2,7 @@ import assert from "node:assert";
 import http from "node:http";
 import express from "express";
 import { probeRouter } from "../routes/probe.mjs";
-import { downloadRouter } from "../routes/download.mjs";
+import { cancelRouter, downloadRouter } from "../routes/download.mjs";
 
 // Minimal mock engine manager that records sent commands.
 function makeEngine() {
@@ -163,8 +163,8 @@ function request(app, method, path, body) {
 // Test 9: cancel with missing id -> 400
 {
   const engine = makeEngine();
-  const app = makeApp(downloadRouter(engine));
-  const res = await request(app, "POST", "/cancel", {});
+  const app = makeApp(cancelRouter(engine));
+  const res = await request(app, "POST", "/", {});
   assert.strictEqual(res.status, 400, "Missing id should be 400");
   console.log("✓ cancel: missing id -> 400");
 }
@@ -172,8 +172,8 @@ function request(app, method, path, body) {
 // Test 10: cancel with id -> 200 + command
 {
   const engine = makeEngine();
-  const app = makeApp(downloadRouter(engine));
-  const res = await request(app, "POST", "/cancel", { id: "abc" });
+  const app = makeApp(cancelRouter(engine));
+  const res = await request(app, "POST", "/", { id: "abc" });
   assert.strictEqual(res.status, 200, "Valid cancel should be 200");
   assert.strictEqual(engine.sent.length, 1, "One command should be sent");
   assert.strictEqual(engine.sent[0].cmd, "cancel");

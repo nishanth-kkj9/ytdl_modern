@@ -185,4 +185,29 @@ function collect(bus, event) {
   assert.deepStrictEqual(await promise, []);
 }
 
+// Test 11: engine_ready preserves additive Python dependency flags while old
+// payloads without them remain safe to consume.
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.handleEngineMessage({
+    type: "engine_ready",
+    ffmpeg: true,
+    ffprobe: true,
+    deno: false,
+    yt_dlp: true,
+    mutagen: false,
+  });
+  assert.deepStrictEqual(mgr.getTools(), {
+    ffmpeg: true, ffprobe: true, deno: false, yt_dlp: true, mutagen: false,
+  });
+
+  const legacy = new EngineManager(makeBus());
+  legacy.handleEngineMessage({ type: "engine_ready", ffmpeg: true });
+  assert.doesNotThrow(() => legacy.getTools());
+  assert.deepStrictEqual(legacy.getTools(), {
+    ffmpeg: true, ffprobe: false, deno: false, yt_dlp: false, mutagen: false,
+  });
+}
+
 console.log("All engineManager tests passed.");

@@ -117,6 +117,8 @@ export class EngineManager {
           ffmpeg: Boolean(msg.ffmpeg),
           ffprobe: Boolean(msg.ffprobe),
           deno: Boolean(msg.deno),
+          yt_dlp: Boolean(msg.yt_dlp),
+          mutagen: Boolean(msg.mutagen),
         };
         this.bus.emit("engine_ready", msg);
         // Flush any commands that were queued while the engine was starting.

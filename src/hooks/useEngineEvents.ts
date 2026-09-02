@@ -67,6 +67,14 @@ export function useEngineEvents() {
         if (payload.type === "engine_crashed") {
           // EngineManager auto-restarts with bounded attempts — reflect the
           // transient downtime instead of silently keeping a stale "ready".
+          for (const item of useDownloadStore.getState().queue) {
+            if (item.status === "downloading") {
+              updateQueueItem(item.id, {
+                status: "failed",
+                message: "Engine crashed — download interrupted",
+              });
+            }
+          }
           setEngineStatus("starting");
         }
         const id = String(payload.id ?? "");
@@ -206,12 +214,16 @@ export function useEngineEvents() {
             if (
               payload.ffmpeg !== undefined ||
               payload.ffprobe !== undefined ||
-              payload.deno !== undefined
+              payload.deno !== undefined ||
+              payload.yt_dlp !== undefined ||
+              payload.mutagen !== undefined
             ) {
               const ff = payload.ffmpeg ? "yes" : "no";
               const fp = payload.ffprobe ? "yes" : "no";
               const dn = payload.deno ? "yes" : "no";
-              addLog(`Engine ready — ffmpeg=${ff} ffprobe=${fp} deno=${dn}`);
+              const yd = payload.yt_dlp ? "yes" : "no";
+              const mt = payload.mutagen ? "yes" : "no";
+              addLog(`Engine ready — ffmpeg=${ff} ffprobe=${fp} deno=${dn} yt-dlp=${yd} mutagen=${mt}`);
             }
             return;
           }

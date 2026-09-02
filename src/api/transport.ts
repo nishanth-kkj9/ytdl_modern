@@ -85,7 +85,16 @@ async function webFetch(url: string, method: string, body?: unknown, timeoutMs =
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(text || `Request failed: ${res.status}`);
+      let message = text;
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown };
+        if (typeof parsed.error === "string" && parsed.error.trim()) {
+          message = parsed.error;
+        }
+      } catch {
+        // Non-JSON error bodies are already suitable fallback messages.
+      }
+      throw new Error(message || `Request failed: ${res.status}`);
     }
     const data = await res.json().catch((e) => {
       console.error("Fetch parse error:", e);

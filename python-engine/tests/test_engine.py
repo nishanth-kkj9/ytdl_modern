@@ -20,6 +20,7 @@ from engine import (  # noqa: E402
     verify_metadata,
     Metadata,
     VIDEO_QUALITY_PRESETS,
+    RetryStrategy,
 )
 
 
@@ -255,3 +256,39 @@ def test_download_retry_cb_not_called_without_retries(monkeypatch):
 
     assert result.success
     assert calls == [], "retry_cb must not fire on a first-attempt success"
+
+
+# ── Concurrent filepath resolution (BUG-01 verification gate) ────────────────
+
+def test_resolve_filepath_prefers_requested_download_path_over_shared_dir_mtime(tmp_path):
+    """Two simulated same-format downloads must not cross-bind at strategy 3.
+
+    The deliberately divergent title makes strategies 0–2 miss. Download A's
+    later metadata write gives it the newest mtime, which reproduces the old
+    shared-directory race for download B.
+    """
+    own = tmp_path / "B_.mp3"
+    other = tmp_path / "A.mp3"
+    own.write_bytes(b"b")
+    other.write_bytes(b"a")
+    engine = AudioDownloadEngine(output_dir=str(tmp_path), audio_format="mp3")
+    engine._ydl_pre_path = None
+    engine._hook_filepath = None
+    engine._download_started = 0
+
+    resolved = engine._resolve_filepath({
+        "title": "B?",  # sanitize_filename -> B; intentionally misses B_.mp3
+        "requested_downloads": [{"filepath": str(own)}],
+    })
+
+    assert resolved == str(own)
+
+
+# ── Retry strategy failure classification (TEST-01) ──────────────────────────
+
+def test_retry_strategy_rejects_non_retryable_errors_and_caps_backoff():
+    strategy = RetryStrategy(max_retries=3, initial_delay=2, max_delay=5, backoff=2)
+    for message in ("cancelled", "not a YouTube URL", "is not a valid URL", "ffmpeg missing"):
+        assert not strategy.should_retry(RuntimeError(message))
+    assert [strategy.next_delay(), strategy.next_delay(), strategy.next_delay()] == [2, 4, 5]
+    assert not strategy.should_retry(RuntimeError("temporary network error"))

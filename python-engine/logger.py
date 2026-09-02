@@ -1,5 +1,5 @@
 """
-ytdl_pro_pyqt6.logger
+ytdl_modern.logger
 ─────────────────────
 Thread-safe file logger that writes timestamped entries to:
   <project_root>/logs/ytdl_pro_YYYYMMDD.log
@@ -150,10 +150,3 @@ def log_format_verify(filepath: str, expected: str, actual: str, ok: bool) -> No
         warn(f"FORMAT MISMATCH: expected={expected.upper()} actual={actual.upper()} "
              f"file={os.path.basename(filepath)}")
 
-
-def log_app_start(version: str, output_dir: str) -> None:
-    separator()
-    info(f"APPLICATION START — ytdl_pro v{version}")
-    info(f"  Output Dir : {output_dir}")
-    info(f"  Log File   : {_get_log_path()}")
-    separator()

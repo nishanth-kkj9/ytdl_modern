@@ -17,6 +17,16 @@
 ## Known gaps (not actioned — reasons documented)
 - **`python-engine/engine.py` is a 1,508-line monolith.** Fully tested and working; splitting
   is deferred by design (`plans/README.md`). Revisit when a feature touches it anyway.
+- **Engine crash orphaned UI queue items** — FIXED: `engine_crashed` handler in
+  `useEngineEvents` now marks in-flight downloads as failed (see `analysis/IMPLEMENTATION_PROMPT.md` §REL-01).
+- **Engine readiness was opaque** — FIXED: `engine_ready` now reports `yt_dlp`/`mutagen`
+  availability; probe error message is explicit about missing dependencies (see `analysis/IMPLEMENTATION_PROMPT.md` §DX-01).
+- **CI workflow never triggered** — FIXED: branch list typo corrected from `ain, master]`
+  to `[main, master]`; workflow now runs on push/PR to `main` (see `analysis/IMPLEMENTATION_PROMPT.md` §CI-01).
+- **Raw JSON error bodies surfaced in the UI** — FIXED: `webFetch` parses JSON error
+  bodies and surfaces the inner `error` field (see `analysis/IMPLEMENTATION_PROMPT.md` §UX-01).
+- **`/api/download/cancel` shared rate-limit bucket** — FIXED: cancel endpoint has its
+  own limiter (21 req/10s) separate from downloads (5 req/10s) (see `analysis/IMPLEMENTATION_PROMPT.md` §REL-02).
 - **Structured JSON logging / remote telemetry:** not needed for a localhost single-user app;
   rotating file logger + live WS log panel cover the use case.
 - **Docker / Prometheus / API versioning / LAN deployment:** out of scope for the documented
@@ -26,9 +36,9 @@
 - **`npm audit` / `pip-audit` run with `|| true`:** moderate findings never hard-fail CI — deliberate.
 
 ## Coverage gaps
-- Several frontend components lack dedicated Vitest coverage (UrlInput, ProbeCard,
-  WaveformProgress, LogPanel, MetadataPanel). Store, hook, URL regex, utils, DrawerPanel, and
-  bugfix suites exist. Flagged P2 in `analysis`.
+- `LogPanel` lacks dedicated Vitest coverage. `UrlInput`, `ProbeCard`, `WaveformProgress`,
+  and `MetadataPanel` now have targeted coverage (see `src/components/coreComponents.test.tsx`).
+  Store, hook, URL regex, utils, DrawerPanel, and bugfix suites exist.
 - Backend has no automated test for the `server.mjs` end-to-end error-middleware wiring beyond
   the live smoke test (static/history routes are covered).
 
