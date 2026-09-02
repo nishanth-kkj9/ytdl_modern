@@ -7,13 +7,32 @@ const projectRoot = path.resolve(__dirname, "..");
 // Read the web package version at startup (throws only if package.json is missing).
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
+// ── Env parsing (PR-02) ──────────────────────────────────────────────────────
+// Numeric env vars must never become NaN: Number("abc") would silently poison
+// config.port / config.engineMaxPendingCommands and fail later with obscure
+// errors (server.listen(NaN)). Parse strictly and fall back to the documented
+// default, warning loudly so a misconfigured environment is visible at startup.
+function envInt(name, fallback, { min, max } = {}) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || String(raw).trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || (min !== undefined && n < min) || (max !== undefined && n > max)) {
+    console.warn(
+      `[config] Ignoring invalid ${name}=${JSON.stringify(raw)} — using ${fallback}` +
+        (min !== undefined || max !== undefined ? ` (valid range: ${min ?? "-inf"}..${max ?? "+inf"})` : "")
+    );
+    return fallback;
+  }
+  return n;
+}
+
 /**
  * Central configuration for the YTDL Web server.
  * Easy to extend — add new keys here and consume them in modules.
  */
 export const config = {
   // Server
-  port: Number(process.env.PORT || 3000),
+  port: envInt("PORT", 3000, { min: 1, max: 65535 }),
   host: process.env.HOST || "127.0.0.1",
   // Human-readable version exposed by /api/status (single source: web/package.json).
   version: pkg?.version || "0.0.0",
@@ -35,7 +54,7 @@ export const config = {
   engineCwd: path.join(projectRoot, "python-engine"),
   engineMaxRestarts: 3,
   // Upper bound on queued engine commands when the engine is unavailable.
-  engineMaxPendingCommands: Number(process.env.ENGINE_MAX_PENDING || 100),
+  engineMaxPendingCommands: envInt("ENGINE_MAX_PENDING", 100, { min: 1 }),
 };
 
 // ── Loopback allowlists (single source of truth) ─────────────────────────────
