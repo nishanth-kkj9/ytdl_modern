@@ -39,4 +39,19 @@ describe("isSafeThumbnail", () => {
     expect(isSafeThumbnail("https://evil.com/ytimg.com")).toBe(false);
     expect(isSafeThumbnail("not a url")).toBe(false);
   });
+
+  // SSRF pinning: the host suffix match uses LEADING-DOT suffixes, so both
+  // classic spoof vectors must fail. These pin the guard against the
+  // "endsWith bypass" claim from the external analysis round.
+  it("rejects suffix-spoofing hostnames", () => {
+    // Dotless suffix spoof: host ends with "ytimg.com" but is NOT a
+    // ytimg.com subdomain.
+    expect(isSafeThumbnail("https://evilytimg.com/vi/abc.jpg")).toBe(false);
+    // Subdomain-of-subdomain spoof: attacker-controlled parent domain.
+    expect(isSafeThumbnail("https://evil.ytimg.com.attacker.com/vi/abc.jpg")).toBe(false);
+    expect(isSafeThumbnail("https://ytimg.com.evil.com/x.jpg")).toBe(false);
+    // Sibling lookalikes.
+    expect(isSafeThumbnail("https://notytimg.com/x.jpg")).toBe(false);
+    expect(isSafeThumbnail("https://googleusercontent.com.evil.com/x.jpg")).toBe(false);
+  });
 });

@@ -52,6 +52,13 @@ def test_safe_thumbnail_domains():
     assert not _is_safe_thumbnail_url("https://i.ytimg.com/" + "a" * 3000)
     # Non-string input must not raise.
     assert not _is_safe_thumbnail_url(12345)
+    # SSRF pinning: suffix spoofing must fail. The allowlist uses LEADING-DOT
+    # suffixes, so neither the dotless-suffix spoof (evilytimg.com) nor the
+    # attacker-parent-domain spoof (ytimg.com.attacker.com) may pass.
+    assert not _is_safe_thumbnail_url("https://evilytimg.com/vi/abc.jpg")
+    assert not _is_safe_thumbnail_url("https://evil.ytimg.com.attacker.com/vi/abc.jpg")
+    assert not _is_safe_thumbnail_url("https://ytimg.com.evil.com/x.jpg")
+    assert not _is_safe_thumbnail_url("https://notytimg.com/x.jpg")
 
 
 # ── _merge_missing_info (audio-retry info restoration) ────────────────────────
