@@ -55,7 +55,8 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
   /* eslint-disable react-hooks/refs -- legitimate running-computation pattern */
   const smoothedRef = useRef(0);
   smoothedRef.current = item.speed > 0 ? 0.3 * item.speed + 0.7 * smoothedRef.current : 0;
-  const etaStr = eta(item.downloaded, item.total, smoothedRef.current);
+  const smoothedSpeed = smoothedRef.current;
+  const etaStr = eta(item.downloaded, item.total, smoothedSpeed);
   /* eslint-enable react-hooks/refs */
 
   return (
@@ -104,7 +105,7 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
           <div className="stat-card">
             <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Speed</p>
             <p className={`mt-0.5 tabular-nums text-sm font-semibold ${isAudio ? "text-accent-audio" : "text-accent-video"}`}>
-              {item.speed > 0 ? `${fmtSize(item.speed)}/s` : <span className="shimmer-text">waiting</span>}
+              {smoothedSpeed > 0 ? `${fmtSize(smoothedSpeed)}/s` : <span className="shimmer-text">waiting</span>}
             </p>
           </div>
           <div className="stat-card">

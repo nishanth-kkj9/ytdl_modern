@@ -202,6 +202,23 @@ export class EngineManager {
     if (this.fatalError) {
       throw new Error("Engine is in fatal error state");
     }
+    // Cancel of a download that is still queued locally (engine down or
+    // starting, command not yet written to the child). The engine has never
+    // seen it, so a cancel command sent after it would (a) start the download
+    // on flush, then (b) immediately cancel it — wasted work and a visible
+    // flicker. Instead, drop the pending download entirely and emit the
+    // terminal `cancelled` event so the UI reconciles immediately. Downloads
+    // already written to the engine are cancelled by the engine's own path.
+    if (command.cmd === "cancel") {
+      const idx = this.pendingCommands.findIndex(
+        (c) => c.cmd === "download" && c.id === command.id
+      );
+      if (idx >= 0) {
+        this.pendingCommands.splice(idx, 1);
+        this.bus.emit("cancelled", { type: "cancelled", id: command.id });
+        return;
+      }
+    }
     // Bound the pending queue — reject new commands if the engine is down and
     // the backlog is already large, so a burst cannot grow memory unboundedly.
     if (!this.stdin || this.stdin.destroyed) {

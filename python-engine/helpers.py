@@ -5,7 +5,6 @@ String formatting and filename sanitization.
 """
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime
 

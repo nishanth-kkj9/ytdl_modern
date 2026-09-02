@@ -70,14 +70,20 @@ export function UrlInput() {
 
   const handleAdd = async () => {
     if (!isValid || adding) return;
-    const meta = probeInfo ? {
-      title: probeInfo.title,
-      uploader: probeInfo.uploader,
-      description: probeInfo.description,
-      thumbnail: probeInfo.thumbnail,
-      duration: probeInfo.duration,
-      webpage_url: probeInfo.url,
-    } : undefined;
+    // Only attach probe metadata when it belongs to the URL being added.
+    // If the user probed URL A and then edited the input to URL B, attaching
+    // A's title/thumbnail/uploader to B would corrupt the download's metadata
+    // (wrong title in the queue, wrong cover art, wrong history record).
+    const meta = probeInfo && probeInfo.url === url.trim()
+      ? {
+          title: probeInfo.title,
+          uploader: probeInfo.uploader,
+          description: probeInfo.description,
+          thumbnail: probeInfo.thumbnail,
+          duration: probeInfo.duration,
+          webpage_url: probeInfo.url,
+        }
+      : undefined;
     setAdding(true);
     try {
       await enqueueDownload(url.trim(), selectedFormat, selectedQuality, selectedMode, meta);

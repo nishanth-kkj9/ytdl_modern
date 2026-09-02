@@ -277,4 +277,29 @@ function collect(bus, event) {
   assert.strictEqual(logs.length, 0, "missing protocol_version (legacy) must not warn");
 }
 
+// Test 13 (REV-05): cancelling a still-pending download drops it from the queue
+// and emits the terminal `cancelled` event instead of letting the engine start
+// it on flush and then cancelling a moment later.
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+
+  // Simulate: engine down (no stdin) — the download command stays queued.
+  mgr.child = {};
+  mgr.stdin = null;
+  mgr.ready = false;
+
+  mgr.sendCommand({ cmd: "download", id: "dl-1", url: "https://example.com" });
+  mgr.sendCommand({ cmd: "download", id: "dl-2", url: "https://example.com" });
+  assert.strictEqual(mgr.pendingCommands.length, 2, "Two downloads should be queued");
+
+  const cancelled = collect(bus, "cancelled");
+  mgr.sendCommand({ cmd: "cancel", id: "dl-1" });
+
+  assert.strictEqual(mgr.pendingCommands.length, 1, "Pending download should be removed");
+  assert.strictEqual(mgr.pendingCommands[0].id, "dl-2", "Unrelated pending download must survive");
+  assert.strictEqual(cancelled.length, 1, "Should emit one cancelled event");
+  assert.strictEqual(cancelled[0].id, "dl-1", "cancelled event should carry the removed id");
+}
+
 console.log("All engineManager tests passed.");
