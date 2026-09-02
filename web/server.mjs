@@ -165,6 +165,12 @@ async function main() {
     clearInterval(heartbeat);
     unsubs.forEach((u) => u());
     engine.stop();
+    // PR-04: wss.close() only stops accepting NEW upgrades; connected clients
+    // would keep server.close()'s callback from firing until the 2s force
+    // exit. Terminate them so shutdown is prompt and deterministic.
+    for (const client of wss.clients) {
+      client.terminate();
+    }
     wss.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
