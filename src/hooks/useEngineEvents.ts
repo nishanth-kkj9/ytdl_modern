@@ -12,6 +12,7 @@ export function useEngineEvents() {
   const setWsConnected = useDownloadStore((state) => state.setWsConnected);
   const setMetadataResult = useDownloadStore((state) => state.setMetadataResult);
   const setStatusMessage = useDownloadStore((state) => state.setStatusMessage);
+  const addToast = useDownloadStore((state) => state.addToast);
 
   const downloadBaseRef = useRef<string | null>(null);
 
@@ -161,6 +162,7 @@ export function useEngineEvents() {
             addLog(`Download ${success ? "finished" : "failed"}: ${id}`);
             setStatusMessage(success ? "Download completed." : "Download failed.");
             if (success) {
+              addToast(`Download complete: ${String(payload.title ?? "audio")}`, "success");
               const queueItem = useDownloadStore.getState().queue.find((qi) => qi.id === id);
               addHistoryItem({
                 id,
@@ -294,5 +296,5 @@ export function useEngineEvents() {
       unlistenReconnect?.();
       unlistenConnection?.();
     };
-  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, setWsConnected, updateQueueItem]);
+  }, [addHistoryItem, addLog, addToast, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, setWsConnected, updateQueueItem]);
 }

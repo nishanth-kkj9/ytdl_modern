@@ -1,6 +1,6 @@
 import { invoke } from "../api/transport";
 import { create } from "zustand";
-import { DownloadItem, HistoryItem, Metadata, MetadataResult, ProbeInfo } from "../types";
+import { DownloadItem, HistoryItem, Metadata, MetadataResult, ProbeInfo, Toast, ToastType } from "../types";
 
 // Generate a unique ID (crypto.randomUUID is collision-free and available in
 // all modern browsers).
@@ -45,6 +45,8 @@ interface DownloadState {
   /** True while the WebSocket to the server is connected (header indicator). */
   wsConnected: boolean;
   metadataResult: MetadataResult | null;
+  /** Active toast notifications. Newest first. */
+  toasts: Toast[];
   /** Monotonic counter backing LogEntry._seq (stable React keys). */
   _logSeq: number;
   enqueueDownload: (url: string, format: string, quality: string, type: "audio" | "video", meta?: Metadata) => Promise<void>;
@@ -67,6 +69,12 @@ interface DownloadState {
   addHistoryItem: (record: HistoryItem) => void;
   loadHistory: () => Promise<void>;
   clearHistory: () => Promise<void>;
+  /** Push a toast notification. Returns the toast id for programmatic dismissal. */
+  addToast: (message: string, type?: ToastType, duration?: number) => string;
+  /** Remove a toast by id. */
+  removeToast: (id: string) => void;
+  /** Clear all toasts. */
+  clearToasts: () => void;
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({
@@ -82,6 +90,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   logs: [],
   wsConnected: false,
   metadataResult: null,
+  toasts: [],
   // Monotonic counter backing LogEntry._seq (never reset, so keys stay unique
   // even after the log list is trimmed by the 50-entry cap).
   _logSeq: 0,
@@ -262,5 +271,28 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       get().addLog(`Failed to clear history: ${String(e)}`, "warn");
       set({ statusMessage: "Failed to clear history." });
     }
+  },
+
+  // ── Toast notifications ─────────────────────────────────────────────────
+  addToast: (message, type = "info", duration = 5000) => {
+    const id = generateId();
+    set((state) => ({
+      toasts: [{ id, message, type, duration }, ...state.toasts].slice(0, 5),
+    }));
+    if (duration > 0) {
+      setTimeout(() => {
+        // Still the same toast? (not already dismissed by the user)
+        if (useDownloadStore.getState().toasts.some((t) => t.id === id)) {
+          useDownloadStore.getState().removeToast(id);
+        }
+      }, duration);
+    }
+    return id;
+  },
+  removeToast: (id) => {
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+  },
+  clearToasts: () => {
+    set({ toasts: [] });
   },
 }));

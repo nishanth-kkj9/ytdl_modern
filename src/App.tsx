@@ -8,6 +8,7 @@ import { EmptyState } from "./components/EmptyState";
 import { WaveformProgress } from "./components/WaveformProgress";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { LogPanel } from "./components/LogPanel";
+import { ToastContainer } from "./components/ToastContainer";
 import { useEngineEvents } from "./hooks/useEngineEvents";
 import { useDownloadStore } from "./stores/downloadStore";
 
@@ -129,6 +130,7 @@ function App() {
         onClose={() => setDrawerOpen(false)}
         triggerRef={drawerTriggerRef}
       />
+      <ToastContainer />
     </>
   );
 }

@@ -83,3 +83,13 @@ export interface HistoryItem {
   status?: DownloadStatus;
   thumbnail?: string;
 }
+
+export type ToastType = "success" | "error" | "warning" | "info";
+
+export interface Toast {
+  id: string;
+  message: string;
+  type: ToastType;
+  /** Auto-dismiss duration in ms. 0 = persistent (manual dismiss only). */
+  duration: number;
+}
