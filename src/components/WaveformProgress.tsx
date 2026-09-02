@@ -51,18 +51,12 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
   const hasProgress = item.total > 0;
   const pct = hasProgress ? Math.round(item.progress * 100) : 0;
 
-  // Exponential moving average for speed smoothing — yt-dlp reports
-  // instantaneous speed which can spike 0→max→0 between updates. EMA
-  // (α=0.3) yields a stable, responsive readout without a sample buffer.
-  const smoothedSpeedRef = useRef(0);
-  if (item.speed > 0) {
-    const alpha = 0.3;
-    smoothedSpeedRef.current = alpha * item.speed + (1 - alpha) * smoothedSpeedRef.current;
-  } else {
-    smoothedSpeedRef.current = 0;
-  }
-  const smoothedSpeed = smoothedSpeedRef.current;
-  const etaStr = eta(item.downloaded, item.total, smoothedSpeed);
+  // EMA smoothing: persists across renders (not derivable from props/state).
+  /* eslint-disable react-hooks/refs -- legitimate running-computation pattern */
+  const smoothedRef = useRef(0);
+  smoothedRef.current = item.speed > 0 ? 0.3 * item.speed + 0.7 * smoothedRef.current : 0;
+  const etaStr = eta(item.downloaded, item.total, smoothedRef.current);
+  /* eslint-enable react-hooks/refs */
 
   return (
     <section
