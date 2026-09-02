@@ -12,6 +12,7 @@ import { statusRouter } from "./routes/status.mjs";
 import { restartRouter } from "./routes/restart.mjs";
 import { staticMiddleware } from "./middleware/static.mjs";
 import { rateLimit, originCheck, wsVerifyClient } from "./middleware/security.mjs";
+import { requestLogger } from "./middleware/requestLog.mjs";
 
 async function main() {
   // ── Core services ───────────────────────────────────────────────────────
@@ -23,6 +24,8 @@ async function main() {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
   app.disable("x-powered-by");
+  // Compact per-request observability line for /api/* (static stays quiet).
+  app.use(requestLogger());
   // Production security headers (no external dep needed for local app)
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
