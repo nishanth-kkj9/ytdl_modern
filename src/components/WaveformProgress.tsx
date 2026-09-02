@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useDownloadStore } from "../stores/downloadStore";
 import type { DownloadItem } from "../types";
@@ -50,7 +50,19 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
 
   const hasProgress = item.total > 0;
   const pct = hasProgress ? Math.round(item.progress * 100) : 0;
-  const etaStr = eta(item.downloaded, item.total, item.speed);
+
+  // Exponential moving average for speed smoothing — yt-dlp reports
+  // instantaneous speed which can spike 0→max→0 between updates. EMA
+  // (α=0.3) yields a stable, responsive readout without a sample buffer.
+  const smoothedSpeedRef = useRef(0);
+  if (item.speed > 0) {
+    const alpha = 0.3;
+    smoothedSpeedRef.current = alpha * item.speed + (1 - alpha) * smoothedSpeedRef.current;
+  } else {
+    smoothedSpeedRef.current = 0;
+  }
+  const smoothedSpeed = smoothedSpeedRef.current;
+  const etaStr = eta(item.downloaded, item.total, smoothedSpeed);
 
   return (
     <section
