@@ -33,6 +33,15 @@ export interface ProbeInfo {
   formats?: FormatInfo[];
 }
 
+export interface Metadata {
+  title?: string;
+  uploader?: string;
+  description?: string;
+  thumbnail?: string;
+  duration?: number;
+  webpage_url?: string;
+}
+
 export interface DownloadItem {
   id: string;
   url: string;
@@ -48,6 +57,9 @@ export interface DownloadItem {
   message?: string;
   filepath?: string;
   thumbnail?: string;
+  /** Snapshot of probe metadata captured at enqueue time. Used by retryDownload
+   *  so it never attaches stale global probeInfo to a retried item. */
+  metadata?: Metadata;
 }
 
 export interface MetadataResult {

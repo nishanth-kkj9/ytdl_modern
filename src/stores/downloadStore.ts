@@ -1,6 +1,6 @@
 import { invoke } from "../api/transport";
 import { create } from "zustand";
-import { DownloadItem, HistoryItem, MetadataResult, ProbeInfo } from "../types";
+import { DownloadItem, HistoryItem, Metadata, MetadataResult, ProbeInfo } from "../types";
 
 // Generate a unique ID (crypto.randomUUID is collision-free and available in
 // all modern browsers).
@@ -27,15 +27,6 @@ function extractRefId(message: string): string | undefined {
     /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
   );
   return match?.[1];
-}
-
-interface Metadata {
-  title?: string;
-  uploader?: string;
-  description?: string;
-  thumbnail?: string;
-  duration?: number;
-  webpage_url?: string;
 }
 
 export type EngineStatus = "starting" | "ready" | "error";
@@ -115,6 +106,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
             speed: 0,
             type,
             thumbnail: meta?.thumbnail,
+            metadata: meta,
           },
         ],
       }));
@@ -178,9 +170,9 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     const item = get().queue.find((queueItem) => queueItem.id === id);
     if (!item) return;
     get().updateQueueItem(id, { status: "queued", progress: 0, message: "Retrying..." });
-    const p = get().probeInfo;
-    const meta: Metadata = p ? { title: p.title, uploader: p.uploader, description: p.description, thumbnail: p.thumbnail, duration: p.duration, webpage_url: p.url } : {};
-    await get().startDownload(id, meta);
+    // Use the metadata captured at enqueue time, not the global probeInfo,
+    // which may now point at a different URL the user probed more recently.
+    await get().startDownload(id, item.metadata);
   },
 
   restartEngine: async () => {
