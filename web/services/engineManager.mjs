@@ -60,6 +60,9 @@ export class EngineManager {
     const child = spawn(pythonExe, args, {
       cwd: config.engineCwd,
       stdio: ["pipe", "pipe", "pipe"],
+      // PR-05: never let the sidecar pop a console window on Windows when the
+      // server itself is launched from a GUI context (detached/launcher).
+      windowsHide: true,
     });
     this.child = child;
     this.stdin = child.stdin;
