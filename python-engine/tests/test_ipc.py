@@ -99,6 +99,22 @@ def test_jobs_command_empty_when_no_active_downloads():
 
 # ── Engine readiness and missing-dependency diagnostics (DX-01) ──────────────
 
+def test_ready_message_includes_protocol_version(monkeypatch):
+    """IPC versioning: engine_ready must advertise the NDJSON protocol version
+    so a stale engine paired with a newer server is detectable, never silent."""
+    import io
+    import json
+    import ipc_main
+
+    buf = io.StringIO()
+    monkeypatch.setattr(ipc_main, "_ORIGINAL_STDOUT", buf)
+    ipc_main._emit_ready()
+
+    msg = json.loads(buf.getvalue())
+    assert msg["type"] == "engine_ready"
+    assert msg["protocol_version"] == 1
+
+
 def test_ready_message_reports_core_python_dependency_flags(monkeypatch):
     """The readiness handshake must expose both required Python libraries."""
     import io

@@ -242,6 +242,39 @@ function collect(bus, event) {
   assert.strictEqual(crashes2.length, 0, "clean exit must not emit engine_crashed");
 }
 
-console.log("All engineManager tests passed.");
+// Test 12b (IPC versioning): the engine advertises its NDJSON protocol
+// version in engine_ready; Node warns via the bus when it mismatches so a
+// stale Python engine paired with a newer server is visible, never silent.
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  const logs = collect(bus, "engine_log");
+  mgr.handleEngineMessage({
+    type: "engine_ready", protocol_version: 1, ffmpeg: true,
+  });
+  assert.strictEqual(logs.length, 0, "matching protocol version must not warn");
+  assert.strictEqual(mgr.ready, true);
+
+  const bus2 = makeBus();
+  const mgr2 = new EngineManager(bus2);
+  const logs2 = collect(bus2, "engine_log");
+  mgr2.handleEngineMessage({
+    type: "engine_ready", protocol_version: 99, ffmpeg: true,
+  });
+  assert.strictEqual(mgr2.ready, true, "engine still becomes ready on version mismatch");
+  assert.strictEqual(logs2.length, 1, "mismatched protocol version must warn once");
+  assert.match(logs2[0].message, /protocol version/i);
+}
+
+// Legacy engines (pre-versioning) that omit protocol_version must not crash
+// or warn — additive field, old payloads stay valid.
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  const logs = collect(bus, "engine_log");
+  mgr.handleEngineMessage({ type: "engine_ready", ffmpeg: true });
+  assert.strictEqual(mgr.ready, true);
+  assert.strictEqual(logs.length, 0, "missing protocol_version (legacy) must not warn");
+}
 
 console.log("All engineManager tests passed.");

@@ -125,6 +125,22 @@ export class EngineManager {
       case "engine_ready":
         this.ready = true;
         this.restartAttempts = 0;
+        // IPC protocol versioning: warn loudly on a mismatch so a stale
+        // Python engine behind a newer server is diagnosable instead of
+        // producing subtle wire-shape failures. Legacy engines that omit
+        // the field pass through untouched (additive compatibility).
+        const ENGINE_PROTOCOL_VERSION = 1;
+        if (
+          typeof msg.protocol_version === "number" &&
+          msg.protocol_version !== ENGINE_PROTOCOL_VERSION
+        ) {
+          const vmsg =
+            `Engine protocol version ${msg.protocol_version} does not match ` +
+            `server version ${ENGINE_PROTOCOL_VERSION} — update python-engine/ ` +
+            `or the web server; some commands or events may misbehave.`;
+          console.warn(`[engineManager] ${vmsg}`);
+          this.bus.emit("engine_log", { type: "engine_log", message: vmsg, level: "warn" });
+        }
         this.readyTools = {
           ffmpeg: Boolean(msg.ffmpeg),
           ffprobe: Boolean(msg.ffprobe),

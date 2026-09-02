@@ -35,6 +35,9 @@ def _emit_ready() -> None:
     deno = shutil.which("deno")
     _write_message({
         "type": "engine_ready",
+        # IPC protocol version — bumped on any incompatible NDJSON change so a
+        # stale engine paired with a newer server is detectable, never silent.
+        "protocol_version": 1,
         "ffmpeg": bool(ffmpeg),
         "ffprobe": bool(ffprobe),
         "deno": bool(deno),
