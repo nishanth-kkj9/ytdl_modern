@@ -107,6 +107,9 @@ describe("useEngineEvents — engine status flow", () => {
       status: "failed", message: "Engine crashed — download interrupted",
     });
     expect(queue.find((item) => item.id === "complete")?.status).toBe("completed");
+    // REL-01 also requires a warn-level log entry for the crash.
+    const crashLog = useDownloadStore.getState().logs.find((l) => l.level === "warn");
+    expect(crashLog?.message).toContain("Engine crashed");
   });
 });
 

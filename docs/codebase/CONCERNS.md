@@ -21,8 +21,11 @@
   `useEngineEvents` now marks in-flight downloads as failed (see `analysis/IMPLEMENTATION_PROMPT.md` §REL-01).
 - **Engine readiness was opaque** — FIXED: `engine_ready` now reports `yt_dlp`/`mutagen`
   availability; probe error message is explicit about missing dependencies (see `analysis/IMPLEMENTATION_PROMPT.md` §DX-01).
-- **CI workflow never triggered** — FIXED: branch list typo corrected from `ain, master]`
-  to `[main, master]`; workflow now runs on push/PR to `main` (see `analysis/IMPLEMENTATION_PROMPT.md` §CI-01).
+- **CI workflow trigger never fired** — STALE finding: the analyzed trigger typo
+  (`branches: ain, master]`) was already absent at the implementation-start SHA
+  (`4c5dbcf` — the trigger block already read `branches: [main, master]`), so no
+  trigger edit was required or made; CI-02 pinning + syntax-check coverage was
+  applied on top (see `analysis/IMPLEMENTATION_PROMPT.md` §CI-01/§CI-02).
 - **Raw JSON error bodies surfaced in the UI** — FIXED: `webFetch` parses JSON error
   bodies and surfaces the inner `error` field (see `analysis/IMPLEMENTATION_PROMPT.md` §UX-01).
 - **`/api/download/cancel` shared rate-limit bucket** — FIXED: cancel endpoint has its

@@ -261,23 +261,41 @@ def test_download_retry_cb_not_called_without_retries(monkeypatch):
 # ── Concurrent filepath resolution (BUG-01 verification gate) ────────────────
 
 def test_resolve_filepath_prefers_requested_download_path_over_shared_dir_mtime(tmp_path):
-    """Two simulated same-format downloads must not cross-bind at strategy 3.
+    """BUG-01 verification + regression lock (two phases).
 
-    The deliberately divergent title makes strategies 0–2 miss. Download A's
-    later metadata write gives it the newest mtime, which reproduces the old
-    shared-directory race for download B.
+    Phase 1 (verification gate): with requested_downloads absent and
+    strategies 0-2 missing, the legacy shared-directory mtime scan binds
+    download B to download A's file - A's metadata embedding bumped its
+    mtime into B's window. This demonstrates the wrong-file race that
+    justified the fix.
+
+    Phase 2 (corrected behavior): the deterministic
+    requested_downloads[].filepath recorded by yt-dlp is preferred ahead
+    of the scan, so each download binds its own file.
     """
     own = tmp_path / "B_.mp3"
     other = tmp_path / "A.mp3"
     own.write_bytes(b"b")
     other.write_bytes(b"a")
+    # Deterministic mtimes: A is newer, simulating A's post-download
+    # metadata write landing inside B's resolution window.
+    os.utime(own, (1_000_000_000, 1_000_000_000))
+    os.utime(other, (1_000_000_000 + 120, 1_000_000_000 + 120))
     engine = AudioDownloadEngine(output_dir=str(tmp_path), audio_format="mp3")
     engine._ydl_pre_path = None
     engine._hook_filepath = None
     engine._download_started = 0
+    info = {"title": "B?"}  # sanitize_filename -> B; intentionally misses B_.mp3
 
+    # Phase 1 (verification gate): the legacy shared-directory mtime scan
+    # demonstrably binds the wrong (newest) file when requested_downloads
+    # is unavailable - this is the BUG-01 race.
+    assert engine._resolve_filepath(dict(info)) == str(other)
+
+    # Phase 2 (corrected behavior): the deterministic
+    # requested_downloads[].filepath is preferred ahead of the scan.
     resolved = engine._resolve_filepath({
-        "title": "B?",  # sanitize_filename -> B; intentionally misses B_.mp3
+        **info,
         "requested_downloads": [{"filepath": str(own)}],
     })
 
@@ -288,7 +306,10 @@ def test_resolve_filepath_prefers_requested_download_path_over_shared_dir_mtime(
 
 def test_retry_strategy_rejects_non_retryable_errors_and_caps_backoff():
     strategy = RetryStrategy(max_retries=3, initial_delay=2, max_delay=5, backoff=2)
+    # A generic (non-classified) error is retryable while the budget lasts.
+    assert strategy.should_retry(RuntimeError("temporary network error"))
     for message in ("cancelled", "not a YouTube URL", "is not a valid URL", "ffmpeg missing"):
         assert not strategy.should_retry(RuntimeError(message))
     assert [strategy.next_delay(), strategy.next_delay(), strategy.next_delay()] == [2, 4, 5]
+    # Back-off ceiling reached and retry budget exhausted: no further retries.
     assert not strategy.should_retry(RuntimeError("temporary network error"))
