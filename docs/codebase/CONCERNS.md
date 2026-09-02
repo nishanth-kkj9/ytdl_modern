@@ -13,6 +13,22 @@
    `allowedOriginsFor()` in `web/config.mjs` are the single source of truth for both guards.
 5. **_/api health/status blind spots, history error leaks, WS CSWSH, Express 5 crash** —
    all resolved (see git log).
+6. **Production-readiness round (file-by-file audit)**:
+   - **PR-01** Corrupt `history.json` was silently reset (next save overwrote the user's
+     history). **FIXED**: `historyService.init()` backs the corrupt file up to
+     `history.json.corrupt-<ts>` before any overwrite; ENOENT (first run) stays silent.
+   - **PR-02** Garbage `PORT`/`ENGINE_MAX_PENDING` env values produced `NaN` config
+     (obscure `listen(NaN)` startup crash). **FIXED**: strict `envInt()` parsing with
+     range checks, fallback + loud warning (`web/tests/config.test.mjs`).
+   - **PR-03** Cached `readyTools` survived engine death — `/api/status.tools` reported
+     stale flags. **FIXED**: cleared in `_onChildExit` (exit handler funnel) and the
+     spawn-error handler.
+   - **PR-04** Graceful shutdown left connected WS clients alive; `server.close()` relied
+     on the 2 s force-exit. **FIXED**: clients terminated before `wss.close()`.
+   - **PR-05** Engine sidecar could flash a console window on Windows. **FIXED**:
+     `windowsHide: true` on spawn.
+   - **PR-06** Non-finite `duration` reached the NDJSON wire as `NaN → null`. **FIXED**:
+     dropped unless `Number.isFinite` (routes tests 8b/8c).
 
 ## Known gaps (not actioned — reasons documented)
 - **`python-engine/engine.py` is a 1,508-line monolith.** Fully tested and working; splitting
