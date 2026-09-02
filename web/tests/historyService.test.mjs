@@ -128,4 +128,3 @@ async function makeService() {
 }
 
 console.log("All historyService tests passed.");
-console.log("All historyService tests passed.");

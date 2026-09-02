@@ -31,5 +31,5 @@
 - **python:** install lock + pytest + `pip-audit` + `py_compile` + import check.
 - **smoke:** downloads `dist` artifact, starts server with isolated `YTDL_DATA_DIR`, runs `test-smoke.mjs`.
 
-## Coverage snapshot (2026-09-01)
-- Vitest **31** tests / 6 files · pytest **24** tests · backend **9** suites · npm/pip audit clean (0 known at HEAD).
+## Coverage snapshot (2026-09-02)
+- Vitest **54** tests / 10 files · pytest **29** tests · backend **12** suites · npm/pip audit clean (0 known at HEAD).
