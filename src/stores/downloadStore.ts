@@ -51,6 +51,8 @@ interface DownloadState {
   selectedQuality: string;
   statusMessage: string;
   logs: LogEntry[];
+  /** True while the WebSocket to the server is connected (header indicator). */
+  wsConnected: boolean;
   metadataResult: MetadataResult | null;
   /** Monotonic counter backing LogEntry._seq (stable React keys). */
   _logSeq: number;
@@ -69,6 +71,7 @@ interface DownloadState {
   setMetadataResult: (result: MetadataResult | null) => void;
   addLog: (message: string, level?: "info" | "warn" | "error") => void;
   clearLogs: () => void;
+  setWsConnected: (connected: boolean) => void;
   updateQueueItem: (id: string, patch: Partial<DownloadItem>) => void;
   addHistoryItem: (record: HistoryItem) => void;
   loadHistory: () => Promise<void>;
@@ -86,6 +89,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   selectedQuality: "high",
   statusMessage: "",
   logs: [],
+  wsConnected: false,
   metadataResult: null,
   // Monotonic counter backing LogEntry._seq (never reset, so keys stay unique
   // even after the log list is trimmed by the 50-entry cap).
@@ -228,6 +232,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   }),
   // Wipes the visible log. _logSeq stays monotonic so React keys never collide.
   clearLogs: () => set({ logs: [] }),
+  setWsConnected: (wsConnected) => set({ wsConnected }),
   updateQueueItem: (id, patch) => set((state) => ({
     queue: state.queue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
   })),

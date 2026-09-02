@@ -18,6 +18,7 @@ function App() {
   const probeInfo = useDownloadStore((state) => state.probeInfo);
   const selectedMode = useDownloadStore((state) => state.selectedMode);
   const engineStatus = useDownloadStore((state) => state.engineStatus);
+  const wsConnected = useDownloadStore((state) => state.wsConnected);
 
   const totalQueued = queue.length;
 
@@ -70,6 +71,16 @@ function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5">
+                  {!wsConnected && (
+                    <span
+                      className="tag tag-downloading"
+                      role="status"
+                      aria-label="Connection to server lost — reconnecting"
+                      title="Connection to the server was lost. Live updates paused; retrying automatically."
+                    >
+                      Reconnecting…
+                    </span>
+                  )}
                   <span className="flex items-center gap-1.5 text-xs text-text-muted" aria-label={engineLabel}>
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${engineDot}`} aria-hidden="true" />
                     {engineLabel}

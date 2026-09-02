@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { listen, invoke, onReconnect, type UnlistenFn } from "../api/transport";
+import { listen, invoke, onReconnect, onConnectionChange, type UnlistenFn } from "../api/transport";
 import { useDownloadStore } from "../stores/downloadStore";
 import { FormatInfo } from "../types";
 
@@ -9,6 +9,7 @@ export function useEngineEvents() {
   const setProbeInfo = useDownloadStore((state) => state.setProbeInfo);
   const addLog = useDownloadStore((state) => state.addLog);
   const setEngineStatus = useDownloadStore((state) => state.setEngineStatus);
+  const setWsConnected = useDownloadStore((state) => state.setWsConnected);
   const setMetadataResult = useDownloadStore((state) => state.setMetadataResult);
   const setStatusMessage = useDownloadStore((state) => state.setStatusMessage);
 
@@ -38,6 +39,7 @@ export function useEngineEvents() {
   useEffect(() => {
     let unlistenEngine: UnlistenFn | null = null;
     let unlistenReconnect: UnlistenFn | null = null;
+    let unlistenConnection: UnlistenFn | null = null;
 
     (async () => {
       try {
@@ -50,6 +52,14 @@ export function useEngineEvents() {
       } catch {
         // download base unavailable — filepath resolution skipped
       }
+
+      // ── WS connection-state indicator ────────────────────────────────────
+      // The header badge reflects the ENGINE; this reflects the WebSocket
+      // itself, so a dead/backlogged server is visible in the UI.
+      const unlistenConnectionLocal = onConnectionChange((state) => {
+        setWsConnected(state === "connected");
+      });
+      unlistenConnection = unlistenConnectionLocal;
 
       unlistenEngine = await listen("engine-event", (event) => {
         const payload = event.payload as Record<string, unknown>;
@@ -282,6 +292,7 @@ export function useEngineEvents() {
     return () => {
       unlistenEngine?.();
       unlistenReconnect?.();
+      unlistenConnection?.();
     };
-  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, updateQueueItem]);
+  }, [addHistoryItem, addLog, setEngineStatus, setMetadataResult, setProbeInfo, setStatusMessage, setWsConnected, updateQueueItem]);
 }

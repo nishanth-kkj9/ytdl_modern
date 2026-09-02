@@ -20,12 +20,44 @@ let everConnected = false;
 const eventHandlers = new Map<string, Set<(payload: any) => void>>();
 const reconnectHandlers = new Set<() => void>();
 
+// ── Connection state (WS status indicator) ───────────────────────────────────
+export type ConnectionState = "connecting" | "connected" | "disconnected";
+let connectionState: ConnectionState = "connecting";
+const connectionHandlers = new Set<(state: ConnectionState) => void>();
+
+function setConnectionState(state: ConnectionState) {
+  if (connectionState === state) return;
+  connectionState = state;
+  for (const fn of [...connectionHandlers]) {
+    try {
+      fn(state);
+    } catch (err) {
+      console.error("[transport] connection handler error:", err);
+    }
+  }
+}
+
+/** Current WebSocket connection state (for UI status indicators). */
+export function getConnectionState(): ConnectionState {
+  return connectionState;
+}
+
+/** Subscribe to connection-state changes. Returns an unsubscribe function. */
+export function onConnectionChange(handler: (state: ConnectionState) => void): UnlistenFn {
+  connectionHandlers.add(handler);
+  return () => {
+    connectionHandlers.delete(handler);
+  };
+}
+
 function ensureWebSocket() {
   if (ws) return;
+  setConnectionState("connecting");
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => {
     reconnectAttempts = 0;
+    setConnectionState("connected");
     if (everConnected) {
       // Reconnect (not first connect): a WS drop may have swallowed terminal
       // download events (result/error/cancelled). Subscribers use this hook
@@ -65,6 +97,7 @@ function ensureWebSocket() {
   };
   ws.onclose = () => {
     ws = null;
+    setConnectionState("disconnected");
     // Reconnect with exponential backoff (1.5s → capped at 30s) so a dead
     // server doesn't trigger an infinite rapid-fire reconnect loop.
     const delay = Math.min(1500 * Math.pow(2, reconnectAttempts), 30000);

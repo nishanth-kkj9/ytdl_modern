@@ -6,6 +6,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 const captured = vi.hoisted(() => ({
   handler: null as null | ((message: { type: string; payload: Record<string, unknown> }) => void),
   reconnectHandler: null as null | (() => void),
+  connectionHandler: null as null | ((state: string) => void),
   // Value returned by the mocked get_active_jobs invoke (reconnect tests).
   activeJobs: [] as { id: string; status: string }[],
   // When true, the mocked get_active_jobs invoke throws (endpoint down).
@@ -19,6 +20,10 @@ vi.mock("../api/transport", () => ({
   }),
   onReconnect: vi.fn((handler: () => void) => {
     captured.reconnectHandler = handler;
+    return () => {};
+  }),
+  onConnectionChange: vi.fn((handler: (state: string) => void) => {
+    captured.connectionHandler = handler;
     return () => {};
   }),
   invoke: vi.fn(async (command: string) => {
@@ -116,6 +121,7 @@ describe("useEngineEvents — engine status flow", () => {
 describe("useEngineEvents — status message flow", () => {
   beforeEach(() => {
     captured.handler = null;
+    captured.connectionHandler = null;
     useDownloadStore.setState({
       queue: [],
       history: [],
@@ -356,5 +362,24 @@ describe("useEngineEvents — WS reconnect reconciliation", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(useDownloadStore.getState().queue[0]?.status).toBe("completed");
+  });
+});
+
+describe("useEngineEvents — WS connection-state indicator", () => {
+  beforeEach(() => {
+    captured.handler = null;
+    captured.connectionHandler = null;
+    useDownloadStore.setState({ wsConnected: false });
+  });
+
+  it("mirrors transport connection state into the store flag", async () => {
+    await setup();
+    expect(captured.connectionHandler).not.toBeNull();
+
+    captured.connectionHandler?.("connected");
+    expect(useDownloadStore.getState().wsConnected).toBe(true);
+
+    captured.connectionHandler?.("disconnected");
+    expect(useDownloadStore.getState().wsConnected).toBe(false);
   });
 });
