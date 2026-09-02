@@ -90,7 +90,11 @@ export function UrlInput() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      handleProbe();
+      if (e.ctrlKey || e.metaKey) {
+        handleAdd();
+      } else {
+        handleProbe();
+      }
     }
   };
 
