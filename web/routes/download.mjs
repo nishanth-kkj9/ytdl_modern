@@ -63,7 +63,9 @@ export function downloadRouter(engineManager) {
     if (body.title) cmd.title = String(body.title).slice(0, 500);
     if (body.uploader) cmd.uploader = String(body.uploader).slice(0, 256);
     if (body.thumbnail) cmd.thumbnail = String(body.thumbnail).slice(0, 500);
-    if (body.duration != null) cmd.duration = Number(body.duration);
+    if (body.duration != null && Number.isFinite(Number(body.duration))) {
+      cmd.duration = Number(body.duration);
+    }
     if (body.webpage_url) cmd.webpage_url = String(body.webpage_url).slice(0, 500);
 
     try {

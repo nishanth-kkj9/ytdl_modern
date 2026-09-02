@@ -160,6 +160,44 @@ function request(app, method, path, body) {
   console.log("✓ download: valid -> 200 + command");
 }
 
+// Test 8b (PR-06): non-finite duration must be dropped, not forwarded as
+// NaN → null over the NDJSON wire.
+{
+  const engine = makeEngine();
+  const app = makeApp(downloadRouter(engine));
+  const res = await request(app, "POST", "/", {
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    mode: "audio",
+    format: "mp3",
+    quality: "high",
+    duration: "not-a-number",
+  });
+  assert.strictEqual(res.status, 200, "Download with bad duration should still be accepted");
+  assert.strictEqual(engine.sent.length, 1, "One command should be sent");
+  assert.strictEqual(
+    engine.sent[0].duration,
+    undefined,
+    "Non-finite duration must be omitted from the engine command"
+  );
+  console.log("✓ download: non-finite duration dropped");
+}
+
+// Test 8c (PR-06): a finite duration still reaches the engine command.
+{
+  const engine = makeEngine();
+  const app = makeApp(downloadRouter(engine));
+  const res = await request(app, "POST", "/", {
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    mode: "audio",
+    format: "mp3",
+    quality: "high",
+    duration: 213,
+  });
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(engine.sent[0].duration, 213, "Finite duration must be forwarded");
+  console.log("✓ download: finite duration forwarded");
+}
+
 // Test 9: cancel with missing id -> 400
 {
   const engine = makeEngine();
