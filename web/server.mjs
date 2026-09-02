@@ -78,7 +78,7 @@ async function main() {
   // Origin clients and loopback origins connect; foreign origins are
   // rejected at upgrade time (403) so other pages open in the browser
   // cannot eavesdrop on server broadcasts (paths, titles, engine logs).
-  const wss = new WebSocketServer({ server, path: "/ws", verifyClient: wsVerifyClient });
+  const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 1024 * 1024, verifyClient: wsVerifyClient });
 
   function broadcast(message) {
     const data = JSON.stringify(message);
