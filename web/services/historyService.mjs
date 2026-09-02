@@ -24,7 +24,22 @@ class JsonHistoryService {
       const raw = await fs.readFile(this.file, "utf8");
       const data = JSON.parse(raw);
       this.records = Array.isArray(data) ? data : [];
-    } catch {
+    } catch (err) {
+      // Missing file is the normal first-run path — reset silently. Any other
+      // failure (invalid JSON, permission error, directory in the way) is
+      // corruption and must never be silently overwritten (PR-01): preserve
+      // the original bytes in a timestamped .corrupt-<ts> backup before any
+      // future save can replace them, and log loudly so it's never silent.
+      if (err?.code !== "ENOENT") {
+        console.error("[historyService] History file is corrupt/unreadable:", err?.message);
+        try {
+          const backup = `${this.file}.corrupt-${Date.now()}`;
+          await fs.copyFile(this.file, backup);
+          console.warn(`[historyService] Corrupt history preserved at ${backup}`);
+        } catch (backupErr) {
+          console.error("[historyService] Could not back up corrupt history:", backupErr);
+        }
+      }
       this.records = [];
     }
     return this;

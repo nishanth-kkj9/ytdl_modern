@@ -108,4 +108,24 @@ async function makeService() {
   console.log("✓ offset pagination");
 }
 
+// Test 8 (PR-01): a corrupt history.json must be preserved, not silently
+// overwritten. Current (pre-fix) behavior under test: init() resets to [] on
+// a parse error and the next saveRecord overwrites the file — the user's
+// history is unrecoverably lost. The required behavior: init() backs the
+// corrupt file up to history.json.corrupt-<timestamp> before any overwrite.
+{
+  const { svc, file, dir } = await makeService();
+  const corrupt = '{"records": [ truncated';
+  await fs.writeFile(file, corrupt, "utf8");
+  await svc.init();
+  assert.strictEqual((await svc.loadHistory()).length, 0, "Corrupt history loads as empty");
+  await svc.saveRecord({ id: "after-corrupt", title: "After" });
+  const siblings = (await fs.readdir(dir)).filter((f) => f.startsWith("history.json.corrupt-"));
+  assert.strictEqual(siblings.length, 1, "Corrupt file must be backed up before overwrite");
+  const backupRaw = await fs.readFile(path.join(dir, siblings[0]), "utf8");
+  assert.strictEqual(backupRaw, corrupt, "Backup must contain the original corrupt bytes");
+  console.log("✓ corrupt history.json is backed up before overwrite (PR-01)");
+}
+
+console.log("All historyService tests passed.");
 console.log("All historyService tests passed.");
