@@ -90,6 +90,7 @@ export class EngineManager {
       this.ready = false;
       this.child = null;
       this.stdin = null;
+      this.readyTools = null; // PR-03: no stale tools for a spawn failure
       this.bus.emit("engine_error", { error: `Engine spawn failed: ${err.message}` });
       // Treat a spawn failure like a crash so the bounded-restart logic can
       // recover (e.g. when Python is temporarily unavailable) instead of
@@ -98,14 +99,22 @@ export class EngineManager {
     });
 
     child.on("exit", (code, signal) => {
-      this.ready = false;
-      this.child = null;
-      this.stdin = null;
-      if (code !== 0) {
-        this.bus.emit("engine_crashed", { exit_code: code, signal });
-        this.maybeRestart();
-      }
+      this._onChildExit(code, signal);
     });
+  }
+
+  // Single funnel for "the child process went away" (non-zero/clean exit).
+  // PR-03: also clears the cached readyTools so /api/status.tools never
+  // reports stale tool flags for an engine that is down or restarting.
+  _onChildExit(code, signal) {
+    this.ready = false;
+    this.child = null;
+    this.stdin = null;
+    this.readyTools = null;
+    if (code !== 0) {
+      this.bus.emit("engine_crashed", { exit_code: code, signal });
+      this.maybeRestart();
+    }
   }
 
   handleEngineMessage(msg) {

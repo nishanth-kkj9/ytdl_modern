@@ -209,5 +209,39 @@ function collect(bus, event) {
     ffmpeg: true, ffprobe: false, deno: false, yt_dlp: false, mutagen: false,
   });
 }
+// Test 12 (PR-03): tool availability must not survive engine death — stale
+// ffmpeg/yt_dlp flags in /api/status would misreport a dead engine's state.
+// Follows Test 6's convention: emulate the child exit handler path without
+// spawning a real child process (the real handlers delegate to
+// _onChildExit, verified by inspection of spawn()'s wiring).
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+  mgr.handleEngineMessage({
+    type: "engine_ready", ffmpeg: true, ffprobe: true, deno: true, yt_dlp: true, mutagen: true,
+  });
+  mgr.child = { kill: () => {} };
+  mgr.stdin = { destroyed: false };
+  assert.notStrictEqual(mgr.getTools(), null, "tools should be set while engine is ready");
+  mgr.spawn = () => {}; // stub the auto-restart timer's spawn
+
+  const crashes = collect(bus, "engine_crashed");
+  mgr._onChildExit(1, null);
+  assert.strictEqual(mgr.readyTools, null, "tools must be cleared when the engine exits");
+  assert.strictEqual(mgr.ready, false, "engine must be marked not-ready on exit");
+  assert.strictEqual(crashes.length, 1, "non-zero exit should emit engine_crashed");
+
+  // Zero exit (clean stop) also clears tools but must not emit a crash.
+  const bus2 = makeBus();
+  const mgr2 = new EngineManager(bus2);
+  mgr2.handleEngineMessage({ type: "engine_ready", ffmpeg: true });
+  const crashes2 = collect(bus2, "engine_crashed");
+  mgr2.spawn = () => {};
+  mgr2._onChildExit(0, null);
+  assert.strictEqual(mgr2.readyTools, null, "tools must be cleared on clean exit too");
+  assert.strictEqual(crashes2.length, 0, "clean exit must not emit engine_crashed");
+}
+
+console.log("All engineManager tests passed.");
 
 console.log("All engineManager tests passed.");
