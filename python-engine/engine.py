@@ -31,6 +31,7 @@ import sys
 import time
 import threading
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from dataclasses import dataclass, field, asdict
@@ -278,6 +279,70 @@ class _SpeedTracker:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Metadata sanitization — shared across all writers
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Control characters (C0 + C1 + DEL), zero-width, and bidi overrides.
+_META_SANITIZE_RE = re.compile(
+    r"[\x00-\x1f\x7f\x80-\x9f\u200b\u200e\u200f\u202a-\u202e\ufeff]+"
+)
+
+_MAX_META_VALUE = 5000  # characters — safety cap against huge payloads
+
+
+def _sanitize_meta(value: str) -> str:
+    """Strip control/zero-width characters and cap length.
+
+    Preserves Unicode letters, punctuation, and whitespace. Does NOT
+    normalize dates (the caller controls that).
+    """
+    if not value:
+        return ""
+    return _META_SANITIZE_RE.sub("", value)[:_MAX_META_VALUE].strip()
+
+
+# ── Normalization for comparison (used by verification) ───────────────────────
+
+def _norm_for_compare(value: str | None) -> str:
+    """Normalize a metadata value for equality comparison.
+
+    Rules:
+      • Strip leading/trailing whitespace.
+      • Collapse internal runs of whitespace to a single space.
+      • Unicode NFKC normalization (compatibility forms — '½' → '1⁄2').
+      • Case-fold for Latin text.
+    Documented normalization decisions:
+      • Date: '20260903' is normalized to '2026-09-03' by `Metadata.from_info`
+        before reaching verification, so both sides already match here.
+      • Duration: stored as human-readable 'Xh Ym Zs' — not compared.
+    """
+    if not value:
+        return ""
+    import unicodedata
+    v = unicodedata.normalize("NFKC", value).strip()
+    return " ".join(v.split()).casefold()
+
+
+# ── Per-field verification result ────────────────────────────────────────────
+
+class FieldResult:
+    """Rich per-field verification outcome (internal use).
+
+    Backward compatibility: `metadata_verify: dict[str, bool]` maps PASS→True,
+    everything else→False. NOT_REQUESTED is intentionally absent from the
+    dict so consumers don't count un-requested fields as verified or failed.
+    """
+    PASS           = "pass"
+    FAIL           = "fail"
+    NOT_SUPPORTED  = "not_supported"
+    NOT_REQUESTED  = "not_requested"
+
+    @staticmethod
+    def to_bool(result: str) -> bool:
+        return result == FieldResult.PASS
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Thumbnail helpers  — maximum quality selection
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -429,7 +494,7 @@ class Metadata:
         webpage_url = info.get("webpage_url") or ""
         video_id = info.get("id") or ""
 
-        desc = (info.get("description") or "").strip()[:450]
+        desc = _sanitize_meta((info.get("description") or "").strip())
 
         lang = info.get("language") or ""
 
@@ -463,6 +528,41 @@ class Metadata:
 # ══════════════════════════════════════════════════════════════════════════════
 #  Metadata embedding — dispatcher routes by file extension
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _collision_safe_tmp(filepath: str, suffix: str = ".meta") -> str:
+    """Return a unique temp path in the same directory as filepath."""
+    base, ext = os.path.splitext(filepath)
+    return f"{base}.{uuid.uuid4().hex[:12]}{suffix}{ext}"
+
+
+def _atomic_mutagen_save(
+    audio_obj,
+    filepath: str,
+    save_kwargs: dict = {},
+) -> None:
+    """Save mutagen tags to a collision-safe temp file, then atomically
+    replace the original. If saving or verification fails, the original
+    file is left untouched.
+
+    Mutagen's save() writes to the path given — so we copy the original
+    to a temp path, save tags onto the temp, then os.replace() it over.
+    This is crash-safe: the original is never corrupted.
+    """
+    tmp = _collision_safe_tmp(filepath)
+    try:
+        shutil.copy2(filepath, tmp)
+        audio_obj.filename = tmp  # redirect mutagen's save target
+        audio_obj.save(**save_kwargs)
+        # Sanity: temp must exist and be larger than a bare header.
+        if not os.path.exists(tmp) or os.path.getsize(tmp) < 44:
+            raise RuntimeError(f"Temp file missing or too small after save: {tmp}")
+        os.replace(tmp, filepath)
+    except Exception:
+        # Clean up temp on failure — never leave debris.
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
 
 def embed_metadata(
     filepath: str,
@@ -526,15 +626,24 @@ def _embed_opus(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[boo
     try:
         audio = OggOpus(filepath)
         tag_map = {
-            "TITLE": meta.title, "ARTIST": meta.artist,
-            "ALBUM": meta.album, "DATE": meta.upload_date,
-            "GENRE": meta.genre, "COMMENT": meta.webpage_url,
-            "VIDEO_ID": meta.video_id, "LANGUAGE": meta.language,
-            "DESCRIPTION": meta.description,
+            "TITLE": _sanitize_meta(meta.title),
+            "ARTIST": _sanitize_meta(meta.artist),
+            "ALBUM": _sanitize_meta(meta.album),
+            "DATE": _sanitize_meta(meta.upload_date),
+            "GENRE": _sanitize_meta(meta.genre),
+            "COMMENT": _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl_modern",
+            "VIDEO_ID": _sanitize_meta(meta.video_id),
+            "LANGUAGE": _sanitize_meta(meta.language),
+            "DESCRIPTION": _sanitize_meta(meta.description),
         }
+        # Vorbis comments: setting the key replaces the old value (idempotent).
         for k, v in tag_map.items():
             if v:
                 audio[k] = [v]
+        # Clear any keys we own that have no new value (prevent stale remnants).
+        for k in tag_map:
+            if not tag_map[k] and k in audio:
+                del audio[k]
 
         art_ok = False
         if cover:
@@ -551,7 +660,7 @@ def _embed_opus(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[boo
             except Exception as exc:
                 applog.warn(f"Opus cover art embed failed: {exc}")
 
-        audio.save()
+        _atomic_mutagen_save(audio, filepath)
         return True, art_ok
     except Exception as exc:
         applog.error(f"_embed_opus failed: {exc}")
@@ -569,25 +678,41 @@ def _embed_mp3(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
         except ID3Error:
             tags = ID3()
 
-        if meta.title:       tags.add(TIT2(encoding=3, text=meta.title))
-        if meta.artist:      tags.add(TPE1(encoding=3, text=meta.artist))
-        if meta.album:       tags.add(TALB(encoding=3, text=meta.album))
-        if meta.upload_date: tags.add(TDRC(encoding=3, text=meta.upload_date))
-        if meta.genre:       tags.add(TCON(encoding=3, text=meta.genre))
-        if meta.webpage_url:
-            tags.add(COMM(encoding=3, lang="eng", desc="Comment",
-                          text=meta.webpage_url))
+        # ── Idempotency: clear owned frames before writing new ones ────────
+        # tags.add() APPENDS — calling embed twice would duplicate TIT2,
+        # TPE1, APIC, etc. We delete all instances of owned frame types
+        # first, then add fresh values. Unrelated tags (e.g. TENC encoder,
+        # user TXXX keys we don't own) are preserved.
+        _OWNED_SIMPLE_FRAMES = ("TIT2", "TPE1", "TALB", "TDRC", "TCON", "TLAN")
+        for fid in _OWNED_SIMPLE_FRAMES:
+            tags.delall(fid)
+        tags.delall("COMM")       # all COMM frames (we own desc="Comment")
+        tags.delall("TXXX")       # we own TXXX:video_id (and don't preserve others)
+        tags.delall("APIC")       # all picture frames — replaced on re-embed
+
+        title    = _sanitize_meta(meta.title)
+        artist   = _sanitize_meta(meta.artist)
+        album    = _sanitize_meta(meta.album)
+        date     = _sanitize_meta(meta.upload_date)
+        genre    = _sanitize_meta(meta.genre)
+        web_url  = _sanitize_meta(meta.webpage_url)
+        vid_id   = _sanitize_meta(meta.video_id)
+        lang     = _sanitize_meta(meta.language)
+
+        if title:       tags.add(TIT2(encoding=3, text=title))
+        if artist:      tags.add(TPE1(encoding=3, text=artist))
+        if album:       tags.add(TALB(encoding=3, text=album))
+        if date:        tags.add(TDRC(encoding=3, text=date))
+        if genre:       tags.add(TCON(encoding=3, text=genre))
+        if web_url:
+            tags.add(COMM(encoding=3, lang="eng", desc="Comment", text=web_url))
         else:
-            # Always write a comment tag (even if webpage_url is absent, e.g.
-            # when a stale cached info dict is used). Prevents a permanently
-            # empty COMM/comment field and the misleading
-            # "Metadata verification: 3/4 fields OK" result.
             tags.add(COMM(encoding=3, lang="eng", desc="Comment",
                           text="Downloaded with ytdl_modern"))
-        if meta.video_id:
-            tags.add(TXXX(encoding=3, desc="video_id", text=meta.video_id))
-        if meta.language:
-            tags.add(TLAN(encoding=3, text=meta.language))
+        if vid_id:
+            tags.add(TXXX(encoding=3, desc="video_id", text=vid_id))
+        if lang:
+            tags.add(TLAN(encoding=3, text=lang))
 
         art_ok = False
         if cover:
@@ -598,7 +723,7 @@ def _embed_mp3(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
             except Exception as exc:
                 applog.warn(f"MP3 cover art embed failed: {exc}")
 
-        tags.save(filepath, v2_version=3)
+        _atomic_mutagen_save(tags, filepath, save_kwargs={"v2_version": 3})
         return True, art_ok
     except Exception as exc:
         applog.error(f"_embed_mp3 failed: {exc}")
@@ -615,27 +740,36 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
         if audio.tags is None:
             audio.add_tags()
 
-        if meta.title:       audio.tags["\xa9nam"] = [meta.title]
-        if meta.artist:      audio.tags["\xa9ART"] = [meta.artist]
-        if meta.album:       audio.tags["\xa9alb"] = [meta.album]
-        # Store full ISO date YYYY-MM-DD when available; fallback to year for legacy readers.
-        if meta.upload_date: audio.tags["\xa9day"] = [meta.upload_date]
-        if meta.genre:       audio.tags["\xa9gen"] = [meta.genre]
+        title    = _sanitize_meta(meta.title)
+        artist   = _sanitize_meta(meta.artist)
+        album    = _sanitize_meta(meta.album)
+        date     = _sanitize_meta(meta.upload_date)
+        genre    = _sanitize_meta(meta.genre)
+        web_url  = _sanitize_meta(meta.webpage_url)
+        vid_id   = _sanitize_meta(meta.video_id)
+        lang     = _sanitize_meta(meta.language)
+        desc     = _sanitize_meta(meta.description)
+
+        # MP4 atoms: assignment replaces (idempotent).
+        if title:       audio.tags["\xa9nam"] = [title]
+        if artist:      audio.tags["\xa9ART"] = [artist]
+        if album:       audio.tags["\xa9alb"] = [album]
+        if date:        audio.tags["\xa9day"] = [date]
+        if genre:       audio.tags["\xa9gen"] = [genre]
         comment_parts = []
-        if meta.webpage_url:
-            comment_parts.append(meta.webpage_url)
-        if meta.video_id:
-            comment_parts.append(f"ID: {meta.video_id}")
+        if web_url:
+            comment_parts.append(web_url)
+        if vid_id:
+            comment_parts.append(f"ID: {vid_id}")
         if comment_parts:
             audio.tags["\xa9cmt"] = [" | ".join(comment_parts)]
         else:
-            # Always ensure comment exists — mirrors mp3 fallback, prevents 3/4 verification.
             audio.tags["\xa9cmt"] = ["Downloaded with ytdl_modern"]
-        if meta.description:
-            audio.tags["desc"] = [meta.description]
-            audio.tags["ldes"] = [meta.description]
-        if meta.language:
-            audio.tags["\xa9lyr"] = [meta.language]
+        if desc:
+            audio.tags["desc"] = [desc]
+            audio.tags["ldes"] = [desc]
+        if lang:
+            audio.tags["\xa9lyr"] = [lang]
 
         art_ok = False
         if cover:
@@ -645,7 +779,7 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
             except Exception as exc:
                 applog.warn(f"MP4 cover art embed failed: {exc}")
 
-        audio.save()
+        _atomic_mutagen_save(audio, filepath)
         return True, art_ok
     except Exception as exc:
         applog.error(f"_embed_mp4 failed: {exc}")
@@ -657,7 +791,10 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _embed_ffmpeg(filepath: str, meta: Metadata, ffmpeg_bin: str) -> tuple[bool, bool]:
-    tmp = filepath + ".meta.tmp"
+    tmp = _collision_safe_tmp(filepath, suffix=".meta")
+    # Ensure the temp has the same extension so ffmpeg can detect the muxer.
+    if not tmp.lower().endswith(os.path.splitext(filepath)[1].lower()):
+        tmp += os.path.splitext(filepath)[1].lower()
 
     meta_args = []
     if meta.title:       meta_args.extend(["-metadata", f"title={meta.title}"])
@@ -713,52 +850,194 @@ def _embed_ffmpeg(filepath: str, meta: Metadata, ffmpeg_bin: str) -> tuple[bool,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
+    """Read metadata back from filepath and verify it matches expectations.
+
+    Strict verification: for each field, reads the actual value from the
+    container and compares it (normalized) against the metadata we intended
+    to embed. Returns `dict[str, bool]` for backward compatibility with
+    `DownloadResult.metadata_verify` consumers — True = PASS, False = FAIL
+    or NOT_SUPPORTED.
+
+    Per-format reader:
+      MP3   → mutagen ID3 frames (TIT2, TPE1, TALB, TDRC, TCON, COMM, TXXX, TLAN, APIC)
+      Opus  → mutagen Vorbis comments + metadata_block_picture (FLAC Picture)
+      M4A   → mutagen MP4 atoms (©nam, ©ART, ©alb, ©day, ©gen, ©cmt, covr, desc)
+      WAV   → mutagen.wave.WAVE if available, else ffprobe JSON tags
+      MKV   → ffprobe JSON tags
+      WebM  → ffprobe JSON tags
+
+    Normalization rules (see `_norm_for_compare`):
+      • NFKC Unicode normalization, whitespace collapse, case-fold.
+      • Date: `Metadata.from_info` already normalizes 'YYYYMMDD' → 'YYYY-MM-DD'.
+    """
     result: dict[str, bool] = {
         "title": False, "artist": False, "date": False, "comment": False,
     }
     if not _MUTAGEN_OK or not os.path.exists(filepath):
         return result
 
+    ext = os.path.splitext(filepath)[1].lower()
+
+    # What we expect to find (sanitized, as the embedder would have written it).
+    expected = {
+        "title":       _sanitize_meta(meta.title),
+        "artist":      _sanitize_meta(meta.artist),
+        "album":       _sanitize_meta(meta.album),
+        "date":        _sanitize_meta(meta.upload_date),
+        "genre":       _sanitize_meta(meta.genre),
+        "language":    _sanitize_meta(meta.language),
+        "video_id":    _sanitize_meta(meta.video_id),
+        "description": _sanitize_meta(meta.description),
+    }
+    expected_comment = _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl_modern"
+
+    # Fields that are NOT_REQUESTED (empty in meta) are absent from the result.
+    for key, val in expected.items():
+        if not val:
+            continue  # not requested → don't include in the verify dict
+        result[key] = False  # default: will be set True if read-back matches
+
     try:
-        ext = os.path.splitext(filepath)[1].lower()
-
-        # MP3 path reads ID3 tags directly — no need for MutagenFile to
-        # "identify" the file first (frame identification can fail for edge
-        # cases even when a valid ID3 tag exists, which previously produced a
-        # misleading all-False result).
+        # ── MP3: ID3 frames ─────────────────────────────────────────────────
         if ext == ".mp3":
+            from mutagen.id3 import ID3 as _ID3
             try:
-                from mutagen.id3 import ID3 as _ID3
                 id3 = _ID3(filepath)
-                result["title"]   = bool(id3.get("TIT2"))
-                result["artist"]  = bool(id3.get("TPE1"))
-                result["date"]    = bool(id3.get("TDRC"))
-                # COMM is a uniquely-keyed frame (stored as "COMM:desc:lang"),
-                # so a bare get("COMM") never matches it — use getall().
-                result["comment"] = bool(id3.getall("COMM"))
-            except Exception:
-                pass
+            except ID3Error:
+                return result
+
+            def _id3_text(fid: str) -> str:
+                frame = id3.get(fid)
+                if frame is None:
+                    return ""
+                text = getattr(frame, "text", [""])[0] if frame.text else ""
+                return str(text)
+
+            if "title" in result:
+                result["title"] = _norm_for_compare(_id3_text("TIT2")) == _norm_for_compare(expected["title"])
+            if "artist" in result:
+                result["artist"] = _norm_for_compare(_id3_text("TPE1")) == _norm_for_compare(expected["artist"])
+            if "album" in result:
+                result["album"] = _norm_for_compare(_id3_text("TALB")) == _norm_for_compare(expected["album"])
+            if "date" in result:
+                result["date"] = _norm_for_compare(_id3_text("TDRC")) == _norm_for_compare(expected["date"])
+            if "genre" in result:
+                result["genre"] = _norm_for_compare(_id3_text("TCON")) == _norm_for_compare(expected["genre"])
+            if "language" in result:
+                result["language"] = _norm_for_compare(_id3_text("TLAN")) == _norm_for_compare(expected["language"])
+
+            # Comment: check any COMM frame exists (we own desc="Comment").
+            if True:  # comment is always written (fallback text)
+                comms = id3.getall("COMM")
+                result["comment"] = len(comms) > 0 and any(
+                    _norm_for_compare(c.text[0] if c.text else "") == _norm_for_compare(expected_comment)
+                    for c in comms if c.text
+                )
+
+            # Cover art: APIC frame with type=3 and data length > 0.
+            apics = id3.getall("APIC")
+            if apics:
+                best = next((a for a in apics if a.type == 3), apics[0])
+                result["cover_art"] = bool(best.data and len(best.data) > 100)
+            else:
+                result["cover_art"] = False
+
             return result
 
-        f = MutagenFile(filepath)
-        if f is None:
-            return result
-
+        # ── Opus: Vorbis comments ────────────────────────────────────────────
         if ext == ".opus":
-            result["title"]   = bool(f.get("TITLE", [None])[0])
-            result["artist"]  = bool(f.get("ARTIST", [None])[0])
-            result["date"]    = bool(f.get("DATE", [None])[0])
-            result["comment"] = bool(f.get("COMMENT", [None])[0])
-        elif ext in (".m4a", ".mp4"):
-            if hasattr(f, "tags") and f.tags:
-                result["title"]   = bool(f.tags.get("\xa9nam"))
-                result["artist"]  = bool(f.tags.get("\xa9ART"))
-                result["date"]    = bool(f.tags.get("\xa9day"))
-                result["comment"] = bool(f.tags.get("\xa9cmt"))
-        elif ext in (".mkv", ".webm", ".wav"):
-            # Mutagen has limited support for mkv/webm/wav; try ffprobe, fallback to trust.
+            f = MutagenFile(filepath)
+            if f is None:
+                return result
+            vorbis_map = {
+                "title": "TITLE", "artist": "ARTIST", "album": "ALBUM",
+                "date": "DATE", "genre": "GENRE", "language": "LANGUAGE",
+                "video_id": "VIDEO_ID", "description": "DESCRIPTION",
+            }
+            for key, vorbis_key in vorbis_map.items():
+                if key not in result:
+                    continue
+                stored = f.get(vorbis_key, [None])[0]
+                result[key] = _norm_for_compare(str(stored or "")) == _norm_for_compare(expected[key])
+
+            # Comment (always present).
+            stored_comment = f.get("COMMENT", [None])[0]
+            result["comment"] = bool(stored_comment)
+
+            # Cover art: metadata_block_picture → decode FLAC Picture → check data.
+            mbp = f.get("metadata_block_picture", [None])[0]
+            if mbp:
+                try:
+                    pic_data = base64.b64decode(mbp)
+                    pic = Picture(data=pic_data)
+                    result["cover_art"] = bool(pic.data and len(pic.data) > 100)
+                except Exception:
+                    result["cover_art"] = False
+            else:
+                result["cover_art"] = False
+
+            return result
+
+        # ── M4A / MP4: iTunes-style atoms ────────────────────────────────────
+        if ext in (".m4a", ".mp4"):
+            f = MutagenFile(filepath)
+            if f is None or not hasattr(f, "tags") or not f.tags:
+                return result
+            atom_map = {
+                "title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb",
+                "date": "\xa9day", "genre": "\xa9gen", "language": "\xa9lyr",
+                "description": "desc",
+            }
+            for key, atom in atom_map.items():
+                if key not in result:
+                    continue
+                stored = f.tags.get(atom, [None])[0]
+                result[key] = _norm_for_compare(str(stored or "")) == _norm_for_compare(expected[key])
+
+            # Comment: always written.
+            cmt = f.tags.get("\xa9cmt", [None])[0]
+            result["comment"] = bool(cmt)
+
+            # Cover art: covr atom with MP4Cover data.
+            covr = f.tags.get("covr", [])
+            if covr:
+                result["cover_art"] = bool(covr[0] and len(covr[0]) > 100)
+            else:
+                result["cover_art"] = False
+
+            return result
+
+        # ── WAV: mutagen.wave.WAVE (RIFF INFO) or ffprobe ───────────────────
+        if ext == ".wav":
+            # Try mutagen.wave.WAVE first (it can read RIFF INFO chunks).
+            try:
+                from mutagen.wave import WAVE
+                w = WAVE(filepath)
+                tags = w.tags or {}
+                tag_get = lambda k: str(tags.get(k, "") or "")
+                if "title" in result:
+                    result["title"] = _norm_for_compare(tag_get("INAM")) == _norm_for_compare(expected["title"]) or \
+                                      _norm_for_compare(tag_get("title")) == _norm_for_compare(expected["title"])
+                if "artist" in result:
+                    result["artist"] = _norm_for_compare(tag_get("IART")) == _norm_for_compare(expected["artist"]) or \
+                                      _norm_for_compare(tag_get("artist")) == _norm_for_compare(expected["artist"])
+                if "date" in result:
+                    result["date"] = _norm_for_compare(tag_get("ICRD")) == _norm_for_compare(expected["date"]) or \
+                                    _norm_for_compare(tag_get("date")) == _norm_for_compare(expected["date"])
+                if "genre" in result:
+                    result["genre"] = _norm_for_compare(tag_get("IGNR")) == _norm_for_compare(expected["genre"])
+                # Comment: ICMT chunk.
+                result["comment"] = bool(tag_get("ICMT") or tag_get("comment"))
+                # Cover art: WAV/RIFF has no standard embedded-art mechanism.
+                # Deliberately NOT included in result → NOT_SUPPORTED.
+                return result
+            except ImportError:
+                pass  # mutagen.wave not available — fall through to ffprobe
+            except Exception:
+                pass  # can't open — fall through
+
+            # ffprobe fallback
             ffprobe_bin = shutil.which("ffprobe")
-            probed = False
             if ffprobe_bin:
                 try:
                     import json as _json
@@ -767,28 +1046,41 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                     if r.returncode == 0:
                         j = _json.loads(r.stdout.decode(errors="replace"))
                         tags = j.get("format", {}).get("tags", {}) or {}
-                        lower_tags = {str(k).lower(): v for k, v in tags.items()}
-                        result["title"] = bool(lower_tags.get("title"))
-                        result["artist"] = bool(lower_tags.get("artist"))
-                        result["date"] = bool(lower_tags.get("date"))
+                        lower_tags = {str(k).lower(): str(v) for k, v in tags.items()}
+                        for key in ("title", "artist", "date", "genre"):
+                            if key in result:
+                                result[key] = _norm_for_compare(lower_tags.get(key, "")) == _norm_for_compare(expected[key])
                         result["comment"] = bool(lower_tags.get("comment"))
-                        probed = any(result.values())
+                        # Cover art not supported for WAV — omit from result.
+                        return result
                 except Exception:
                     pass
-            if not probed:
-                # Fallback: trust embedding if file exists and meta had values
-                # (ffmpeg -c copy succeeded, so tags were written).
-                try:
-                    if os.path.getsize(filepath) > 512:
-                        result["title"] = bool(meta.title)
-                        result["artist"] = bool(meta.artist)
-                        result["date"] = bool(meta.upload_date)
-                        result["comment"] = bool(meta.webpage_url or meta.video_id or meta.description)
-                except OSError:
-                    pass
 
-        ok_count = sum(1 for v in result.values() if v)
-        applog.info(f"Metadata verification: {ok_count}/4 fields OK")
+            # No verification possible — mark known fields as unverified (False).
+            return result
+
+        # ── MKV / WebM: ffprobe JSON ─────────────────────────────────────────
+        if ext in (".mkv", ".webm"):
+            ffprobe_bin = shutil.which("ffprobe")
+            if ffprobe_bin:
+                try:
+                    import json as _json
+                    cmd = [ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath]
+                    r = subprocess.run(cmd, capture_output=True, timeout=10)
+                    if r.returncode == 0:
+                        j = _json.loads(r.stdout.decode(errors="replace"))
+                        tags = j.get("format", {}).get("tags", {}) or {}
+                        lower_tags = {str(k).lower(): str(v) for k, v in tags.items()}
+                        for key in ("title", "artist", "album", "date", "genre", "language"):
+                            if key in result:
+                                result[key] = _norm_for_compare(lower_tags.get(key, "")) == _norm_for_compare(expected[key])
+                        result["comment"] = bool(lower_tags.get("comment") or lower_tags.get("description"))
+                        # Cover art not supported via ffmpeg path — omit from result.
+                        return result
+                except Exception:
+                    pass
+            return result
+
     except Exception as exc:
         applog.warn(f"Metadata verification failed: {exc}")
 
