@@ -1010,33 +1010,36 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
         # ── WAV: mutagen.wave.WAVE (RIFF INFO) or ffprobe ───────────────────
         if ext == ".wav":
             # Try mutagen.wave.WAVE first (it can read RIFF INFO chunks).
+            tags_found = False
             try:
                 from mutagen.wave import WAVE
                 w = WAVE(filepath)
                 tags = w.tags or {}
-                tag_get = lambda k: str(tags.get(k, "") or "")
-                if "title" in result:
-                    result["title"] = _norm_for_compare(tag_get("INAM")) == _norm_for_compare(expected["title"]) or \
-                                      _norm_for_compare(tag_get("title")) == _norm_for_compare(expected["title"])
-                if "artist" in result:
-                    result["artist"] = _norm_for_compare(tag_get("IART")) == _norm_for_compare(expected["artist"]) or \
-                                      _norm_for_compare(tag_get("artist")) == _norm_for_compare(expected["artist"])
-                if "date" in result:
-                    result["date"] = _norm_for_compare(tag_get("ICRD")) == _norm_for_compare(expected["date"]) or \
-                                    _norm_for_compare(tag_get("date")) == _norm_for_compare(expected["date"])
-                if "genre" in result:
-                    result["genre"] = _norm_for_compare(tag_get("IGNR")) == _norm_for_compare(expected["genre"])
-                # Comment: ICMT chunk.
-                result["comment"] = bool(tag_get("ICMT") or tag_get("comment"))
-                # Cover art: WAV/RIFF has no standard embedded-art mechanism.
-                # Deliberately NOT included in result → NOT_SUPPORTED.
-                return result
+                if tags:  # Only proceed if mutagen actually found tags
+                    tags_found = True
+                    tag_get = lambda k: str(tags.get(k, "") or "")
+                    if "title" in result:
+                        result["title"] = _norm_for_compare(tag_get("INAM")) == _norm_for_compare(expected["title"]) or \
+                                          _norm_for_compare(tag_get("title")) == _norm_for_compare(expected["title"])
+                    if "artist" in result:
+                        result["artist"] = _norm_for_compare(tag_get("IART")) == _norm_for_compare(expected["artist"]) or \
+                                          _norm_for_compare(tag_get("artist")) == _norm_for_compare(expected["artist"])
+                    if "date" in result:
+                        result["date"] = _norm_for_compare(tag_get("ICRD")) == _norm_for_compare(expected["date"]) or \
+                                        _norm_for_compare(tag_get("date")) == _norm_for_compare(expected["date"])
+                    if "genre" in result:
+                        result["genre"] = _norm_for_compare(tag_get("IGNR")) == _norm_for_compare(expected["genre"])
+                    # Comment: ICMT chunk.
+                    result["comment"] = bool(tag_get("ICMT") or tag_get("comment"))
+                    # Cover art: WAV/RIFF has no standard embedded-art mechanism.
+                    # Deliberately NOT included in result → NOT_SUPPORTED.
+                    return result
             except ImportError:
                 pass  # mutagen.wave not available — fall through to ffprobe
             except Exception:
                 pass  # can't open — fall through
 
-            # ffprobe fallback
+            # ffprobe fallback (primary when mutagen can't read RIFF INFO)
             ffprobe_bin = shutil.which("ffprobe")
             if ffprobe_bin:
                 try:
@@ -1047,10 +1050,14 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                         j = _json.loads(r.stdout.decode(errors="replace"))
                         tags = j.get("format", {}).get("tags", {}) or {}
                         lower_tags = {str(k).lower(): str(v) for k, v in tags.items()}
-                        for key in ("title", "artist", "date", "genre"):
+                        for key in ("title", "artist", "album", "date", "genre", "language"):
                             if key in result:
                                 result[key] = _norm_for_compare(lower_tags.get(key, "")) == _norm_for_compare(expected[key])
                         result["comment"] = bool(lower_tags.get("comment"))
+                        # WAV/RIFF INFO has no standard chunks for video_id or description.
+                        # Remove them from result so they're reported as NOT_SUPPORTED.
+                        result.pop("video_id", None)
+                        result.pop("description", None)
                         # Cover art not supported for WAV — omit from result.
                         return result
                 except Exception:
