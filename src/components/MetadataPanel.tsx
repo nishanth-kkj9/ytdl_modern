@@ -22,26 +22,40 @@ const FIELD_PRIORITY = [
   "channel", "duration",
 ];
 
+type CheckState = "pass" | "fail" | "na";
+
 interface CheckEntry {
   label: string;
   key: string;
-  present: boolean;
+  state: CheckState;
 }
 
+/**
+ * Verification contract (python-engine verify_metadata):
+ *   • key in `verify`  → PASS (true) or FAIL (false): the field was embedded
+ *     and read back + compared against what we asked to embed.
+ *   • key absent from `verify` → NOT verifiable for this container, or never
+ *     requested (source had no value) → rendered as gray "N/A", never as a
+ *     red failure. (WAV/RIFF cannot store video_id/description/cover art;
+ *     MKV/WebM cannot store cover art via the ffmpeg muxer.)
+ */
 function buildChecklist(meta: MetadataResult): CheckEntry[] {
-  const f = meta.fields;
   const v = meta.verify;
+  const state = (key: string): CheckState => {
+    if (key in v) return v[key] ? "pass" : "fail";
+    return "na";
+  };
   return [
-    { label: "Title", key: "title", present: v.title ?? !!f.title },
-    { label: "Artist", key: "artist", present: v.artist ?? !!f.artist },
-    { label: "Album", key: "album", present: !!f.album },
-    { label: "Date", key: "upload_date", present: v.date ?? !!f.upload_date },
-    { label: "Genre", key: "genre", present: !!f.genre },
-    { label: "Language", key: "language", present: !!f.language },
-    { label: "Video ID", key: "video_id", present: !!f.video_id },
-    { label: "Comment", key: "comment", present: v.comment ?? !!f.webpage_url },
-    { label: "Cover Art", key: "cover_art", present: meta.cover_art },
-    { label: "Description", key: "description", present: !!f.description },
+    { label: "Title", key: "title", state: state("title") },
+    { label: "Artist", key: "artist", state: state("artist") },
+    { label: "Album", key: "album", state: state("album") },
+    { label: "Date", key: "upload_date", state: state("date") },
+    { label: "Genre", key: "genre", state: state("genre") },
+    { label: "Language", key: "language", state: state("language") },
+    { label: "Video ID", key: "video_id", state: state("video_id") },
+    { label: "Comment", key: "comment", state: state("comment") },
+    { label: "Cover Art", key: "cover_art", state: state("cover_art") },
+    { label: "Description", key: "description", state: state("description") },
   ];
 }
 
@@ -67,13 +81,18 @@ export function MetadataPanel() {
   );
 
   const verifiedCount = useMemo(
-    () => checklist.filter((c) => c.present).length,
+    () => checklist.filter((c) => c.state === "pass").length,
     [checklist],
   );
 
   const totalCount = checklist.length;
-  const allVerified = verifiedCount === totalCount;
-  const missingFields = checklist.filter((c) => !c.present);
+  // "All verified" means zero genuine FAILs — N/A fields (unsupported by the
+  // container or never requested) don't count against the pass.
+  const failedFields = useMemo(
+    () => checklist.filter((c) => c.state === "fail"),
+    [checklist],
+  );
+  const allVerified = failedFields.length === 0;
 
   if (!metadataResult) return null;
 
@@ -156,29 +175,43 @@ export function MetadataPanel() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
-          {checklist.map((item) => (
-            <div
-              key={item.key}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              <span className={item.present ? "text-success" : "text-error"}>
-                {item.present ? "✔" : "✖"}
-              </span>
-              <span className={item.present ? "text-text-secondary" : "text-text-muted"}>
-                {item.label}
-                {!item.present && (
-                  <span className="ml-1 text-error">(Not Available)</span>
-                )}
-              </span>
-            </div>
-          ))}
+          {checklist.map((item) => {
+            const icon =
+              item.state === "pass" ? "✔" :
+              item.state === "fail" ? "✖" : "○";
+            const iconClass =
+              item.state === "pass" ? "text-success" :
+              item.state === "fail" ? "text-error" : "text-text-muted/60";
+            const labelClass =
+              item.state === "fail" ? "text-text-secondary" :
+              item.state === "pass" ? "text-text-secondary" : "text-text-muted/70";
+            return (
+              <div
+                key={item.key}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <span className={iconClass} aria-hidden="true">
+                  {icon}
+                </span>
+                <span className={labelClass}>
+                  {item.label}
+                  {item.state === "fail" && (
+                    <span className="ml-1 text-error">(Failed)</span>
+                  )}
+                  {item.state === "na" && (
+                    <span className="ml-1 text-text-muted/60">(N/A)</span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
-        {!allVerified && missingFields.length > 0 && (
+        {!allVerified && failedFields.length > 0 && (
           <div className="mt-3 rounded-md bg-error/10 px-3 py-2">
-            <p className="text-xs font-medium text-error">Missing:</p>
+            <p className="text-xs font-medium text-error">Failed verification:</p>
             <ul className="mt-1 list-inside list-disc text-xs text-error/70">
-              {missingFields.map((m) => (
+              {failedFields.map((m) => (
                 <li key={m.key}>{m.label}</li>
               ))}
             </ul>

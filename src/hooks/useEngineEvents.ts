@@ -179,7 +179,13 @@ export function useEngineEvents() {
               });
               const rawFields = payload.metadata_fields as Record<string, string> | undefined;
               const rawVerify = payload.metadata_verify as Record<string, boolean> | undefined;
-              if (rawFields || rawVerify) {
+              // Only show the metadata panel when something was actually
+              // embedded or verified. An empty {} (metadata embedding failed
+              // entirely) must NOT render the panel — it would display
+              // "Metadata Embedded" with every check marked failed.
+              const hasFields = !!rawFields && Object.keys(rawFields).length > 0;
+              const hasVerify = !!rawVerify && Object.keys(rawVerify).length > 0;
+              if (hasFields || hasVerify) {
                 setMetadataResult({
                   fields: rawFields ?? {},
                   verify: rawVerify ?? {},

@@ -870,9 +870,12 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
       • NFKC Unicode normalization, whitespace collapse, case-fold.
       • Date: `Metadata.from_info` already normalizes 'YYYYMMDD' → 'YYYY-MM-DD'.
     """
-    result: dict[str, bool] = {
-        "title": False, "artist": False, "date": False, "comment": False,
-    }
+    # Only `comment` is unconditionally present: every embedder always writes
+    # it (with fallback text when no webpage_url exists). Every other key is
+    # added below ONLY when actually requested (non-empty in meta), so a field
+    # the source never had stays absent from the dict → the UI reports it as
+    # NOT_SUPPORTED/N-A, never as a false FAIL.
+    result: dict[str, bool] = {"comment": False}
     if not _MUTAGEN_OK or not os.path.exists(filepath):
         return result
 
@@ -1031,6 +1034,11 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                         result["genre"] = _norm_for_compare(tag_get("IGNR")) == _norm_for_compare(expected["genre"])
                     # Comment: ICMT chunk.
                     result["comment"] = bool(tag_get("ICMT") or tag_get("comment"))
+                    # WAV/RIFF INFO has no standard chunks for video_id or
+                    # description — omit them (NOT_SUPPORTED), matching the
+                    # ffprobe path below.
+                    result.pop("video_id", None)
+                    result.pop("description", None)
                     # Cover art: WAV/RIFF has no standard embedded-art mechanism.
                     # Deliberately NOT included in result → NOT_SUPPORTED.
                     return result
@@ -1078,7 +1086,11 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                         j = _json.loads(r.stdout.decode(errors="replace"))
                         tags = j.get("format", {}).get("tags", {}) or {}
                         lower_tags = {str(k).lower(): str(v) for k, v in tags.items()}
-                        for key in ("title", "artist", "album", "date", "genre", "language"):
+                        # Matroska tags are free-form — _embed_ffmpeg writes
+                        # video_id/description as generic -metadata keys and
+                        # ffprobe reads them back, so verify them too.
+                        for key in ("title", "artist", "album", "date", "genre", "language",
+                                    "video_id", "description"):
                             if key in result:
                                 result[key] = _norm_for_compare(lower_tags.get(key, "")) == _norm_for_compare(expected[key])
                         result["comment"] = bool(lower_tags.get("comment") or lower_tags.get("description"))
@@ -1668,7 +1680,9 @@ class AudioDownloadEngine:
 
             ext = os.path.splitext(filepath)[1].lower()
             metadata_container = _CONTAINER_NAMES.get(ext, ext.lstrip(".").upper())
-            metadata_engine = "Mutagen" if ext not in (".mkv", ".webm") else "FFmpeg"
+            # WAV/MKV/WebM embedding and verification go through FFmpeg/ffprobe,
+            # not mutagen — report the engine that actually did the work.
+            metadata_engine = "FFmpeg" if ext in (".mkv", ".webm", ".wav") else "Mutagen"
             metadata_cover_art = bool(thumb_ok and self.cover_art and meta.thumbnail_url)
 
             # Re-measure size after metadata embedding
