@@ -2,10 +2,14 @@ import { invoke } from "../api/transport";
 import { create } from "zustand";
 import { DownloadItem, HistoryItem, Metadata, MetadataResult, ProbeInfo, Toast, ToastType } from "../types";
 
-// Generate a unique ID (crypto.randomUUID is collision-free and available in
-// all modern browsers).
+// Generate a unique ID. crypto.randomUUID() only exists in secure contexts —
+// served over LAN HTTP (e.g. http://192.168.x.x) it is undefined in Chromium
+// and enqueueDownload would throw on every paste, so fall back gracefully.
 function generateId(): string {
-  return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export interface LogEntry {
@@ -149,6 +153,11 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
         duration: meta?.duration ?? null,
         webpage_url: meta?.webpage_url || null,
       });
+      // P1-13: after `await invoke(...)` resolves, the user may already have
+      // hit Cancel (status flipped to "cancelled" while the request was in
+      // flight) — unconditionally writing "downloading" would resurrect it.
+      const cur = get().queue.find((queueItem) => queueItem.id === id);
+      if (cur?.status === "cancelled") return;
       get().updateQueueItem(id, { status: "downloading", message: "Starting" });
       get().addLog(`Download started: ${item.url}`);
     } catch (error) {
@@ -178,7 +187,16 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   retryDownload: async (id) => {
     const item = get().queue.find((queueItem) => queueItem.id === id);
     if (!item) return;
-    get().updateQueueItem(id, { status: "queued", progress: 0, message: "Retrying..." });
+    // P2-20: reset ALL progress fields — leaving downloaded/total/speed from
+    // the failed attempt made the ETA flash stale numbers mid-retry.
+    get().updateQueueItem(id, {
+      status: "queued",
+      progress: 0,
+      downloaded: 0,
+      total: 0,
+      speed: 0,
+      message: "Retrying...",
+    });
     // Use the metadata captured at enqueue time, not the global probeInfo,
     // which may now point at a different URL the user probed more recently.
     await get().startDownload(id, item.metadata);
@@ -238,22 +256,31 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     queue: state.queue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
   })),
   addHistoryItem: (record) => {
+    // P2-19: compute the result FIRST, then perform the invoke side effect
+    // outside of `set` — a side effect inside the updater would double-POST
+    // if the updater ever replays (StrictMode, future zustand semantics).
+    let added = false;
     set((state) => {
       if (state.history.some((h) => h.id === record.id)) return state;
-      const nextHistory = [record, ...state.history].slice(0, 100);
-      invoke("save_history", { record }).catch((err) => {
-        get().addLog(`History save failed: ${String(err)}`, "warn");
-      });
+      added = true;
       return {
-        history: nextHistory,
+        history: [record, ...state.history].slice(0, 100),
         queue: state.queue.filter((item) => item.id !== record.id),
       };
     });
+    if (added) {
+      invoke("save_history", { record }).catch((err) => {
+        get().addLog(`History save failed: ${String(err)}`, "warn");
+      });
+    }
   },
   loadHistory: async () => {
     try {
       const records = await invoke<HistoryItem[]>("load_history");
-      set({ history: records });
+      // P2-21: apply the same 100-record cap addHistoryItem enforces, so a
+      // server returning more (e.g. hand-edited history.json) can't grow the
+      // in-memory store without bound.
+      set({ history: Array.isArray(records) ? records.slice(0, 100) : [] });
     } catch (e) {
       // Surface history load failures instead of failing silently — the
       // drawer shows stale "No downloads yet" otherwise.

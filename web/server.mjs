@@ -69,6 +69,13 @@ async function main() {
     res.json({ ok: true, engineReady: engine.isReady() })
   );
 
+  // Unknown /api routes must return JSON 404s, not fall through to the SPA
+  // handler (which would answer 200 HTML for GET /api/typo and confuse
+  // programmatic clients).
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+
   // Static frontend + downloads.
   app.use(staticMiddleware(config));
 
@@ -83,9 +90,15 @@ async function main() {
   function broadcast(message) {
     const data = JSON.stringify(message);
     for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
+      if (client.readyState !== WebSocket.OPEN) continue;
+      // Backpressure guard: a throttled/backgrounded tab drains its socket
+      // slowly, while 5 downloads stream progress events. Skip (don't buffer)
+      // when the client's send buffer exceeds 1 MB — the client catches up via
+      // the reconnect reconciliation instead of the server buffering forever.
+      if (client.bufferedAmount > 1_000_000) {
+        continue;
       }
+      client.send(data);
     }
   }
 
@@ -109,6 +122,13 @@ async function main() {
   );
 
   wss.on("connection", (socket) => {
+    // P0-1: the ws library emits 'error' on individual sockets for
+    // receiver-level failures (oversized frame > maxPayload, invalid UTF-8,
+    // protocol violations). With no 'error' listener Node raises an uncaught
+    // exception → the global handler exits the whole server, killing every
+    // active download. Any local process can open this socket (no-Origin
+    // clients are allowed for curl support), so this MUST be tolerant.
+    socket.on("error", () => socket.terminate());
     // Send current engine status on connect. The payload includes
     // `type: "engine_ready"` so the frontend's event router recognizes it
     // (the bus-relayed engine_ready carries the type inside its payload;

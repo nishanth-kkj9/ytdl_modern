@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import io
 import os
 import re
 import shutil
@@ -180,6 +179,11 @@ class RetryStrategy:
         # Don't retry user cancellation or unrecoverable errors
         if any(x in msg for x in ("cancelled", "not a youtube url",
                                    "is not a valid url", "ffmpeg")):
+            return False
+        # Permanent request/configuration errors — identical outcome every
+        # attempt, so retrying just wastes 2/4/8s and 4 identical failures.
+        if any(x in msg for x in ("unsupported", "output file not found",
+                                   "invalid timestamp")):
             return False
         return True
 
@@ -353,11 +357,36 @@ def _is_safe_thumbnail_url(url: str) -> bool:
     """Only fetch thumbnails from YouTube's known CDN domains (SSRF guard)."""
     if not isinstance(url, str) or len(url) > 2048:
         return False
+    if not url.startswith(("http://", "https://")):
+        return False  # e.g. ftp://i.ytimg.com/... must not pass
     try:
         hostname = urlparse(url).hostname or ""
         return hostname.endswith(_ALLOWED_THUMBNAIL_DOMAINS)
     except Exception:
         return False
+
+
+class _SSRFSafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that re-validates every hop against the allowlist.
+
+    urllib follows redirects to ARBITRARY hosts by default — an attacker
+    controlling a redirect (or an open redirect on a "safe" domain) could
+    bounce a thumbnail fetch to e.g. a cloud metadata endpoint. Every hop
+    must independently pass the same allowlist as the initial URL.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_safe_thumbnail_url(newurl):
+            applog.warn(f"Blocked thumbnail redirect to unsafe URL: {newurl}")
+            raise urllib.error.HTTPError(
+                req.full_url, code, f"blocked redirect to {newurl}", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_THUMB_OPENER = urllib.request.build_opener(_SSRFSafeRedirectHandler())
+# Hard cap on how many bytes we'll pull into memory for cover art.
+_MAX_THUMB_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _best_thumbnail_url(info: dict) -> str:
@@ -403,8 +432,10 @@ def _best_thumbnail_url(info: dict) -> str:
             try:
                 req = urllib.request.Request(url, method="HEAD",
                     headers={"User-Agent": "Mozilla/5.0"})
-                resp = urllib.request.urlopen(req, timeout=2)
-                return resp.status == 200
+                # Safe opener: re-validates the allowlist on every redirect
+                # hop; the `with` also ensures the response is closed.
+                with _THUMB_OPENER.open(req, timeout=2) as resp:
+                    return resp.status == 200
             except Exception:
                 return False
 
@@ -447,8 +478,19 @@ def _download_bytes(url: str, timeout: int = 15) -> bytes | None:
                 "Accept": "image/webp,image/jpeg,*/*",
             },
         )
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read()
+        with _THUMB_OPENER.open(req, timeout=timeout) as r:
+            # Size-capped read: even a "safe"-domain URL must not be able to
+            # stream unbounded bytes into memory. Content-Length is advisory
+            # (it can lie), so the cap is enforced on the read itself.
+            length = r.headers.get("Content-Length")
+            if length and length.isdigit() and int(length) > _MAX_THUMB_BYTES:
+                applog.warn(f"Thumbnail too large ({length} bytes) — rejected")
+                return None
+            data = r.read(_MAX_THUMB_BYTES + 1)
+            if len(data) > _MAX_THUMB_BYTES:
+                applog.warn(f"Thumbnail exceeded {_MAX_THUMB_BYTES} bytes — rejected")
+                return None
+            return data
     except Exception as exc:
         applog.warn(f"Thumbnail download failed: {exc}")
         return None
@@ -817,9 +859,14 @@ def _embed_ffmpeg(filepath: str, meta: Metadata, ffmpeg_bin: str) -> tuple[bool,
     except OSError:
         pass
 
-    cmd = [ffmpeg_bin, "-y", "-i", filepath, "-c", "copy"] + meta_args + [tmp]
+    cmd = [ffmpeg_bin, "-nostdin", "-y", "-i", filepath, "-c", "copy"] + meta_args + [tmp]
     try:
-        r = subprocess.run(cmd, capture_output=True, timeout=120)
+        # stdin=DEVNULL is critical: capture_output only redirects stdout/stderr,
+        # so ffmpeg would otherwise INHERIT this process's stdin — the live
+        # NDJSON command pipe from Node. ffmpeg reads stdin by default and can
+        # swallow a pending download/cancel command, silently dropping it.
+        r = subprocess.run(cmd, capture_output=True, timeout=120,
+                           stdin=subprocess.DEVNULL)
         if r.returncode == 0 and os.path.exists(tmp):
             if atime is not None and mtime is not None:
                 try:
@@ -1053,7 +1100,10 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                 try:
                     import json as _json
                     cmd = [ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath]
-                    r = subprocess.run(cmd, capture_output=True, timeout=10)
+                    # stdin=DEVNULL: ffprobe must never inherit the NDJSON
+                    # command pipe (see _embed_ffmpeg note).
+                    r = subprocess.run(cmd, capture_output=True, timeout=10,
+                                       stdin=subprocess.DEVNULL)
                     if r.returncode == 0:
                         j = _json.loads(r.stdout.decode(errors="replace"))
                         tags = j.get("format", {}).get("tags", {}) or {}
@@ -1081,7 +1131,10 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
                 try:
                     import json as _json
                     cmd = [ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath]
-                    r = subprocess.run(cmd, capture_output=True, timeout=10)
+                    # stdin=DEVNULL: ffprobe must never inherit the NDJSON
+                    # command pipe (see _embed_ffmpeg note).
+                    r = subprocess.run(cmd, capture_output=True, timeout=10,
+                                       stdin=subprocess.DEVNULL)
                     if r.returncode == 0:
                         j = _json.loads(r.stdout.decode(errors="replace"))
                         tags = j.get("format", {}).get("tags", {}) or {}
@@ -1129,7 +1182,8 @@ def verify_format(filepath: str, expected_fmt: str) -> tuple[bool, str, int]:
                     try:
                         import json as _j
                         r = subprocess.run([ffprobe_bin, "-v", "quiet", "-print_format", "json", "-show_format", filepath],
-                                           capture_output=True, timeout=10)
+                                           capture_output=True, timeout=10,
+                                           stdin=subprocess.DEVNULL)
                         if r.returncode == 0:
                             j = _j.loads(r.stdout.decode(errors="replace"))
                             fmt_name = j.get("format", {}).get("format_name", "")
@@ -1158,6 +1212,38 @@ def verify_format(filepath: str, expected_fmt: str) -> tuple[bool, str, int]:
     except Exception as exc:
         applog.warn(f"Format verification error: {exc}")
         return False, "unknown", 0
+
+
+# ── Per-instance yt-dlp logger (thread-safe stderr capture) ──────────────────
+
+class _YdlLogCollector:
+    """Per-instance yt-dlp `logger`.
+
+    Replaces the old process-global `contextlib.redirect_stderr` capture,
+    which bled captured output across threads when 5 download + 2 probe
+    threads ran yt-dlp concurrently — restore-order inversion could even
+    leave sys.stderr pointing at a dead StringIO. yt-dlp routes all of its
+    own output through this object instead; stderr from ffmpeg child
+    processes still reaches the process stderr and is surfaced by the Node
+    layer as engine_log.
+    """
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def debug(self, msg: str) -> None:
+        pass  # yt-dlp debug lines are extremely verbose — skip
+
+    def info(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        if msg:
+            self.lines.append(msg)
+
+    def error(self, msg: str) -> None:
+        if msg:
+            self.lines.append(msg)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1399,11 +1485,14 @@ class AudioDownloadEngine:
         if self._deno_bin:
             opts["js_runtimes"] = {"deno": {"path": self._deno_bin}}
         last_err = ""
+        # Per-instance logger: keeps yt-dlp output off the process stderr
+        # (which carries the NDJSON protocol on stdout... and logs on stderr)
+        # without any process-global redirection.
+        opts["logger"] = _YdlLogCollector()
         for attempt in range(3):
             try:
-                with contextlib.redirect_stderr(io.StringIO()):
-                    with YoutubeDL(opts) as ydl:
-                        info = ydl.extract_info(url, download=False)
+                with YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
                 if info:
                     applog.log_probe(
                         url,
@@ -1448,7 +1537,16 @@ class AudioDownloadEngine:
                         retry_cb(retry._attempt, delay, str(exc)[:300])
                     except Exception:
                         applog.warn("retry callback failed")
-                time.sleep(delay)
+                # Cancellable back-off: event.wait returns True if the cancel
+                # was requested during the sleep — honor it immediately instead
+                # of forcing the user to wait out the full 2/4/8s.
+                if self._cancel_event.wait(delay):
+                    error_msg = "Download cancelled by user."
+                    applog.log_download_error(url, "Cancelled", error_msg)
+                    return DownloadResult(
+                        success=False, url=url,
+                        error=error_msg, error_type="Cancelled",
+                    )
 
         error_msg  = str(last_exc)
         error_type = classify_error_type(error_msg)
@@ -1552,7 +1650,11 @@ class AudioDownloadEngine:
         self._tracker       = _SpeedTracker()
         # Record when this download started so the filepath fallback can prefer
         # files created during this download rather than an unrelated file.
-        self._download_started = time.monotonic()
+        # MUST be wall-clock epoch time: it is compared against
+        # os.path.getmtime() (epoch seconds). time.monotonic() is boot-relative
+        # and always ≪ any file mtime, which made the "newer than start" filter
+        # a mathematical no-op.
+        self._download_started = time.time()
 
         applog.log_download_start(url, self.audio_format, self.quality)
 
@@ -1569,26 +1671,30 @@ class AudioDownloadEngine:
             self._hook_filepath = None
             self._ydl_pre_path = None
             self._tracker = _SpeedTracker()
-            stderr_capture = io.StringIO()
+            # Per-instance logger (NOT global stderr redirection): 5 download
+            # threads run yt-dlp concurrently — a process-global redirect bled
+            # captured output across threads and could leave sys.stderr
+            # pointing at a dead StringIO after restore-order inversion.
+            collector = _YdlLogCollector()
+            opts["logger"] = collector
             try:
-                with contextlib.redirect_stderr(stderr_capture):
-                    with YoutubeDL(opts) as ydl:
-                        dl_info = ydl.extract_info(url, download=True)
-                        if info is None:
-                            info = dl_info
-                        if first_info is None and dl_info:
-                            first_info = dl_info
-                        try:
-                            self._ydl_pre_path = ydl.prepare_filename(info)
-                        except Exception:
-                            self._ydl_pre_path = None
+                with YoutubeDL(opts) as ydl:
+                    dl_info = ydl.extract_info(url, download=True)
+                    if info is None:
+                        info = dl_info
+                    if first_info is None and dl_info:
+                        first_info = dl_info
+                    try:
+                        self._ydl_pre_path = ydl.prepare_filename(info)
+                    except Exception:
+                        self._ydl_pre_path = None
             except Exception:
-                captured = stderr_capture.getvalue()
+                captured = "\n".join(collector.lines)
                 if captured.strip():
-                    applog.error(f"yt-dlp/ffmpeg stderr during extract_info: {captured[-2000:]}")
+                    applog.error(f"yt-dlp errors during extract_info: {captured[-2000:]}")
                 raise
             finally:
-                self._last_stderr = stderr_capture.getvalue()
+                self._last_stderr = "\n".join(collector.lines)
 
             if info is None:
                 raise RuntimeError("yt-dlp returned no info dict")
@@ -1794,15 +1900,20 @@ class AudioDownloadEngine:
 
     def _trim(self, filepath: str) -> None:
         ffmpeg = self._ffmpeg_bin or "ffmpeg"
-        tmp = filepath + ".trim.tmp"
+        # Keep the original extension on the temp file: ffmpeg infers the
+        # output muxer from the extension, and ".tmp" is unknown → it failed
+        # with "Unable to find a suitable output format" EVERY time.
+        base, ext = os.path.splitext(filepath)
+        tmp = f"{base}.trim.tmp{ext}"
         cmd = [
-            ffmpeg, "-y", "-i", filepath,
+            ffmpeg, "-nostdin", "-y", "-i", filepath,
             "-ss", str(self.trim_start),
             "-to", str(self.trim_end),
             "-c", "copy", tmp,
         ]
         try:
-            r = subprocess.run(cmd, capture_output=True, timeout=120)
+            r = subprocess.run(cmd, capture_output=True, timeout=120,
+                               stdin=subprocess.DEVNULL)
             if r.returncode == 0 and os.path.exists(tmp):
                 os.replace(tmp, filepath)
                 applog.info(f"Trim applied: {self.trim_start}s – {self.trim_end}s")

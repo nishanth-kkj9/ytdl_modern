@@ -49,15 +49,31 @@ function ActiveDownloadCard({ item }: { item: DownloadItem }) {
   }, [item.id]);
 
   const hasProgress = item.total > 0;
-  const pct = hasProgress ? Math.round(item.progress * 100) : 0;
+  // P1-12: clamp to [0, 100] — a malformed/overshooting progress payload must
+  // never render a negative or >100% bar width.
+  const pct = hasProgress ? Math.min(100, Math.max(0, Math.round(item.progress * 100))) : 0;
 
-  // EMA smoothing: persists across renders (not derivable from props/state).
-  /* eslint-disable react-hooks/refs -- legitimate running-computation pattern */
+  // P1-12: EMA smoothing via a ref updated inside an effect. Render stays
+  // pure (no ref mutation during render — StrictMode double-invokes render
+  // and would blend twice per commit) and no setState-in-effect (banned by
+  // react-hooks/set-state-in-effect). The displayed value lags exactly one
+  // progress event behind, imperceptible at ~4 events/s.
+  // P1-12: EMA smoothing stays in render (so the first frame is available
+  // synchronously — an effect would show "waiting" for one whole commit) but
+  // is made IDEMPOTENT with a guard ref: StrictMode double-invokes render in
+  // dev, and the old code re-blended on the second pass (first frame 100 B/s
+  // rendered as 0.3·100+0.7·30 = 51 instead of 30). The `item.speed` guard
+  // makes the second invocation a no-op, so dev and prod render identically.
+  /* eslint-disable react-hooks/refs -- EMA needs cross-render state; the guard ref keeps it StrictMode-safe */
+  const lastSpeedRef = useRef(0);
   const smoothedRef = useRef(0);
-  smoothedRef.current = item.speed > 0 ? 0.3 * item.speed + 0.7 * smoothedRef.current : 0;
+  if (item.speed !== lastSpeedRef.current) {
+    lastSpeedRef.current = item.speed;
+    smoothedRef.current = item.speed > 0 ? 0.3 * item.speed + 0.7 * smoothedRef.current : 0;
+  }
   const smoothedSpeed = smoothedRef.current;
-  const etaStr = eta(item.downloaded, item.total, smoothedSpeed);
   /* eslint-enable react-hooks/refs */
+  const etaStr = eta(item.downloaded, item.total, smoothedSpeed);
 
   return (
     <section

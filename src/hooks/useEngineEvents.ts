@@ -38,6 +38,12 @@ export function useEngineEvents() {
   }
 
   useEffect(() => {
+    // P1-9: StrictMode mounts → cleanup → mounts again. The subscriptions are
+    // created inside an async IIFE AFTER an await, so the first mount's
+    // cleanup used to run while every unlisten ref was still null — the first
+    // mount's listeners were never removed and every event was processed
+    // twice in dev. The cancelled flag closes that gap.
+    let cancelled = false;
     let unlistenEngine: UnlistenFn | null = null;
     let unlistenReconnect: UnlistenFn | null = null;
     let unlistenConnection: UnlistenFn | null = null;
@@ -60,9 +66,13 @@ export function useEngineEvents() {
       const unlistenConnectionLocal = onConnectionChange((state) => {
         setWsConnected(state === "connected");
       });
+      if (cancelled) {
+        unlistenConnectionLocal();
+        return;
+      }
       unlistenConnection = unlistenConnectionLocal;
 
-      unlistenEngine = await listen("engine-event", (event) => {
+      const unlistenEngineLocal = await listen("engine-event", (event) => {
         const payload = event.payload as Record<string, unknown>;
         // Any engine_ready flips the status to ready. This covers both the
         // server's on-connect snapshot and real bus events — no "seen once"
@@ -98,7 +108,10 @@ export function useEngineEvents() {
                 id,
                 title: String(info.title ?? "Unknown title"),
                 uploader: String(info.uploader ?? "Unknown uploader"),
-                duration: Number(info.duration ?? 0),
+                duration:
+                  info.duration != null && Number.isFinite(Number(info.duration))
+                    ? Number(info.duration)
+                    : undefined,
                 thumbnail: String(info.thumbnail ?? ""),
                 url: String(info.webpage_url ?? ""),
                 description: String(info.description ?? ""),
@@ -115,6 +128,20 @@ export function useEngineEvents() {
             return;
           }
           case "progress": {
+            // P1-13: a trailing progress event (in-flight when the user hit
+            // cancel, or racing the terminal event) must not resurrect an
+            // already-terminal item back to "downloading".
+            const current = useDownloadStore
+              .getState()
+              .queue.find((qi) => qi.id === id);
+            if (
+              current &&
+              (current.status === "cancelled" ||
+                current.status === "completed" ||
+                current.status === "failed")
+            ) {
+              return;
+            }
             const downloaded = Number(payload.downloaded ?? 0);
             const total = Number(payload.total ?? 0);
             const progress = total > 0 ? downloaded / total : 0;
@@ -157,7 +184,11 @@ export function useEngineEvents() {
               filepath,
               message: success ? "Completed" : String(payload.error ?? "Failed"),
               progress: success ? 1 : 0,
-              title: payload.title ? String(payload.title) : undefined,
+              // P1-10: only spread `title` when the payload carries one — an
+              // explicit `title: undefined` key overwrote the existing title
+              // with undefined ({...item, ...patch}), blanking it back to the
+              // raw URL for failure payloads that omit title.
+              ...(payload.title ? { title: String(payload.title) } : {}),
             });
             addLog(`Download ${success ? "finished" : "failed"}: ${id}`);
             setStatusMessage(success ? "Download completed." : "Download failed.");
@@ -259,6 +290,12 @@ export function useEngineEvents() {
         }
       });
 
+      if (cancelled) {
+        unlistenEngineLocal();
+        return;
+      }
+      unlistenEngine = unlistenEngineLocal;
+
       // ── WS reconnect reconciliation ────────────────────────────────────────
       // A dropped WebSocket can swallow a download's terminal event
       // (result/error/cancelled), leaving the item stuck "downloading" with a
@@ -266,7 +303,7 @@ export function useEngineEvents() {
       // still active; any local "downloading" item not in that list is marked
       // failed with an honest "status unknown" message — we never guess
       // "completed", since the file may or may not exist.
-      unlistenReconnect = onReconnect(async () => {
+      const unlistenReconnectLocal = onReconnect(async () => {
         const stale = useDownloadStore
           .getState()
           .queue.filter((qi) => qi.status === "downloading");
@@ -295,9 +332,15 @@ export function useEngineEvents() {
           }
         }
       });
+      if (cancelled) {
+        unlistenReconnectLocal();
+        return;
+      }
+      unlistenReconnect = unlistenReconnectLocal;
     })();
 
     return () => {
+      cancelled = true;
       unlistenEngine?.();
       unlistenReconnect?.();
       unlistenConnection?.();

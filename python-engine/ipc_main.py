@@ -20,13 +20,17 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from engine import AudioDownloadEngine, DownloadResult, classify_error_type, _MUTAGEN_OK, _YDL_OK
 
 _YDL_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # Ensure only JSON goes to stdout — redirect all other output to stderr.
+# This MUST happen before the engine import below: an import-time stdout
+# write (library banner, warning) would otherwise corrupt the NDJSON
+# protocol before the guard exists.
 _ORIGINAL_STDOUT = sys.stdout
 sys.stdout = sys.stderr
+
+from engine import AudioDownloadEngine, DownloadResult, classify_error_type, _MUTAGEN_OK, _YDL_OK  # noqa: E402
 
 
 def _emit_ready() -> None:
@@ -247,7 +251,9 @@ def _start_download(command: dict[str, Any]) -> None:
     output_dir = resolved_output
 
     os.makedirs(output_dir, exist_ok=True)
-    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode, cancel_event)
+    # Write the ack BEFORE submitting: a fast executor worker could otherwise
+    # emit `progress` ahead of `download_started` on the wire, and the Node
+    # layer/browser would see progress for an unknown id.
     _write_message({
         "type": "download_started",
         "id": id_,
@@ -255,6 +261,7 @@ def _start_download(command: dict[str, Any]) -> None:
         "fmt": audio_format,
         "quality": quality,
     })
+    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode, cancel_event)
 
 
 def _cancel(command: dict[str, Any]) -> None:
@@ -312,10 +319,13 @@ def _handle_command(command: dict[str, Any]) -> None:
 def main() -> None:
     _emit_ready()
     while True:
-        line = sys.stdin.readline()
-        if not line:
+        # Read raw bytes and decode leniently: one corrupted byte in the
+        # parent's write must not raise UnicodeDecodeError and kill the whole
+        # engine (it would take every in-flight download with it).
+        raw = sys.stdin.buffer.readline()
+        if not raw:
             break
-        line = line.strip()
+        line = raw.decode("utf-8", errors="replace").strip()
         if not line:
             continue
 
@@ -329,7 +339,18 @@ def main() -> None:
             _write_error(None, "InvalidCommand", "Top-level JSON value must be an object")
             continue
 
-        _handle_command(command)
+        # P0-2: a bare exception here (e.g. os.makedirs hitting EACCES or a
+        # disk-full error inside _start_download) used to propagate to the
+        # top-level handler and EXIT the engine — killing all in-flight
+        # downloads and the IPC channel for every queued job. Contain it.
+        try:
+            _handle_command(command)
+        except Exception as exc:
+            _write_error(
+                str(command.get("id", "")),
+                "InternalError",
+                f"Command dispatch failed: {type(exc).__name__}: {exc}",
+            )
 
     # stdin closed — stop accepting work. wait=False so the process can exit
     # even with in-flight downloads (workers are non-daemon by default).

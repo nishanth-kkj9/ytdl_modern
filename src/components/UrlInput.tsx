@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useDownloadStore } from "../stores/downloadStore";
 import { ModeToggle } from "./ModeToggle";
 import { FormatQualitySelects } from "./FormatQualitySelects";
-import { YOUTUBE_REGEX } from "./urlRegex";
+import { YOUTUBE_REGEX, extractVideoId } from "./urlRegex";
 
 const audioFormats = [
   { value: "mp3", label: "MP3" },
@@ -74,7 +74,14 @@ export function UrlInput() {
     // If the user probed URL A and then edited the input to URL B, attaching
     // A's title/thumbnail/uploader to B would corrupt the download's metadata
     // (wrong title in the queue, wrong cover art, wrong history record).
-    const meta = probeInfo && probeInfo.url === url.trim()
+    // P1-11: compare extracted VIDEO IDS, not raw URL strings — yt-dlp
+    // canonicalizes webpage_url to www.youtube.com/watch?v=…, so a pasted
+    // youtu.be short link never string-equals the probe URL and its
+    // metadata was silently dropped. `isValid` guarantees a non-null id for
+    // the input; probeInfo.url may be empty (→ null ≠ id → no metadata).
+    const meta = probeInfo &&
+        extractVideoId(probeInfo.url) === extractVideoId(url.trim()) &&
+        extractVideoId(url.trim()) !== null
       ? {
           title: probeInfo.title,
           uploader: probeInfo.uploader,

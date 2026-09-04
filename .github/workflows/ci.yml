@@ -82,18 +82,9 @@ jobs:
 
       - name: Run backend unit tests
         working-directory: web
-        run: |
-          node tests/engineManager.test.mjs
-          node tests/historyService.test.mjs
-          node tests/historyRoutes.test.mjs
-          node tests/routes.test.mjs
-          node tests/status.test.mjs
-          node tests/config.test.mjs
-          node tests/requestLog.test.mjs
-          node tests/validate.test.mjs
-          node tests/security.test.mjs
-          node tests/static.test.mjs
-          node tests/ws-origin.test.mjs
+        # Globbing so newly added test files are picked up automatically —
+        # the previous hardcoded 11-file list silently skipped additions.
+        run: node --test tests/*.test.mjs
 
   python:
     name: Python Engine

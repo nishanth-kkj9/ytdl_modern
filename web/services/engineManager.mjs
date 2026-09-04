@@ -35,6 +35,21 @@ export class EngineManager {
     this._jobRequestSeq = 0;
     // Last engine_ready payload — surfaces ffmpeg/ffprobe/deno availability.
     this.readyTools = null;
+    // Set to true while we are deliberately stopping/replacing the child so
+    // _onChildExit doesn't misread a clean SIGTERM (code === null) as a crash
+    // and schedule a ghost respawn during shutdown or recover().
+    this.stopping = false;
+    // Handle for the delayed respawn in maybeRestart() — stored so spawn(),
+    // stop() and recover() can cancel a pending restart instead of racing it.
+    this.restartTimer = null;
+    // Download ids sent to the engine that have not yet reached a terminal
+    // event (result/cancelled/error). When the engine crashes, each of these
+    // gets a terminal `error` event so browsers never keep items stuck in
+    // "downloading" forever (the new engine's jobs snapshot is empty).
+    this.activeDownloadIds = new Set();
+    // Children killed deliberately by recover() whose exit events must be
+    // ignored (they are expected — not crashes).
+    this.retiredChildren = new Set();
   }
 
   start() {
@@ -44,6 +59,29 @@ export class EngineManager {
   // Reset a fatal-error state and respawn the engine. Used to recover from
   // a terminal crash without restarting the whole server.
   recover() {
+    // P0-4: kill any LIVE child first. spawn() overwrites this.child
+    // unconditionally — recovering with a live child used to orphan the old
+    // process, leaving duplicate engines all broadcasting onto the bus.
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.child) {
+      const oldChild = this.child;
+      // Retire the old child so its (asynchronous) exit event can't be
+      // misread as a fresh crash by _onChildExit — stopping is false again
+      // by the time the exit event fires, so a flag alone would race.
+      this.retiredChildren.add(oldChild);
+      try {
+        oldChild.kill();
+      } catch {
+        // already gone
+      }
+      if (this.child === oldChild) {
+        this.child = null;
+        this.stdin = null;
+      }
+    }
     this.fatalError = false;
     this.restartAttempts = 0;
     this.ready = false;
@@ -54,6 +92,11 @@ export class EngineManager {
   }
 
   spawn() {
+    // Cancel any pending delayed respawn — a fresh spawn supersedes it.
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     this.fatalError = false;
     const pythonExe = process.env.PYTHON || "python";
     const args = [config.engineEntry];
@@ -102,19 +145,45 @@ export class EngineManager {
     });
 
     child.on("exit", (code, signal) => {
-      this._onChildExit(code, signal);
+      this._onChildExit(child, code, signal);
     });
   }
 
   // Single funnel for "the child process went away" (non-zero/clean exit).
   // PR-03: also clears the cached readyTools so /api/status.tools never
   // reports stale tool flags for an engine that is down or restarting.
-  _onChildExit(code, signal) {
+  _onChildExit(child, code, signal) {
+    // A child killed deliberately by recover() — its exit is expected, not a
+    // crash. Swallow it (and drop the retirement marker) silently.
+    if (this.retiredChildren.has(child)) {
+      this.retiredChildren.delete(child);
+      return;
+    }
     this.ready = false;
     this.child = null;
     this.stdin = null;
     this.readyTools = null;
+    // A deliberate stop (shutdown, recover) kills the child with SIGTERM:
+    // code is null and null !== 0 — that must not broadcast engine_crashed
+    // or schedule a respawn.
+    if (this.stopping) {
+      return;
+    }
     if (code !== 0) {
+      // Terminal events for downloads the engine never finished — without
+      // these, browsers that reconnect after the crash see an empty jobs
+      // snapshot and their queue items stay "downloading" forever.
+      if (this.activeDownloadIds.size > 0) {
+        for (const id of this.activeDownloadIds) {
+          this.bus.emit("error", {
+            type: "error",
+            id,
+            error_type: "EngineCrashed",
+            error: "Engine crashed during download — please retry.",
+          });
+        }
+        this.activeDownloadIds.clear();
+      }
       this.bus.emit("engine_crashed", { exit_code: code, signal });
       this.maybeRestart();
     }
@@ -164,6 +233,16 @@ export class EngineManager {
         break;
       }
       default:
+        // Track download lifecycle so a crash can emit terminal events for
+        // in-flight jobs (see _onChildExit). result/cancelled/error carry the
+        // download id; download_started confirms the engine accepted it.
+        if (
+          msg.type === "result" ||
+          msg.type === "cancelled" ||
+          msg.type === "error"
+        ) {
+          if (msg.id) this.activeDownloadIds.delete(String(msg.id));
+        }
         // Forward all engine events onto the bus. The WebSocket broadcaster
         // listens for these and relays them to browsers.
         this.bus.emit(msg.type, msg);
@@ -195,7 +274,10 @@ export class EngineManager {
     }
     this.restartAttempts += 1;
     console.warn(`Engine exited unexpectedly — restarting (${this.restartAttempts}/${config.engineMaxRestarts})`);
-    setTimeout(() => this.spawn(), 500);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      this.spawn();
+    }, 500);
   }
 
   sendCommand(command) {
@@ -218,6 +300,10 @@ export class EngineManager {
         this.bus.emit("cancelled", { type: "cancelled", id: command.id });
         return;
       }
+    }
+    // Track downloads handed to the engine (see activeDownloadIds docs).
+    if (command.cmd === "download" && command.id) {
+      this.activeDownloadIds.add(String(command.id));
     }
     // Bound the pending queue — reject new commands if the engine is down and
     // the backlog is already large, so a burst cannot grow memory unboundedly.
@@ -308,12 +394,20 @@ export class EngineManager {
   }
 
   stop() {
+    // Deliberate shutdown: suppress the crash path in _onChildExit (a killed
+    // child reports code === null) and cancel any pending respawn.
+    this.stopping = true;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     if (this.child) {
       this.child.kill();
       this.child = null;
       this.stdin = null;
     }
     this.pendingCommands = [];
+    this.activeDownloadIds.clear();
     this._failPendingJobRequests();
   }
 }

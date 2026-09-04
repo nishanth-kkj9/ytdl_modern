@@ -9,7 +9,9 @@ import { config } from "../config.mjs";
  * SQLite, Postgres, or anything else, implement the same interface
  * (init / loadHistory / saveRecord / clear) and export it here.
  */
-class JsonHistoryService {
+// Export the class too so tests can instantiate isolated instances
+// (the singleton below is bound to the real config path).
+export class JsonHistoryService {
   constructor(filePath) {
     this.file = filePath;
     this.records = [];
@@ -71,16 +73,21 @@ class JsonHistoryService {
     // completion before the next one starts, preventing data loss.
     const task = this._writeQueue.then(async () => {
       const idx = this.records.findIndex((r) => r.id === record.id);
+      let next;
       if (idx >= 0) {
-        this.records[idx] = { ...this.records[idx], ...record };
+        next = this.records.slice();
+        next[idx] = { ...next[idx], ...record };
       } else {
-        this.records.unshift(record);
+        next = [record, ...this.records];
       }
       // Cap history at 100 records to prevent unbounded file growth.
-      if (this.records.length > 100) {
-        this.records = this.records.slice(0, 100);
+      if (next.length > 100) {
+        next = next.slice(0, 100);
       }
-      await this._writeFile(JSON.stringify(this.records, null, 2));
+      await this._writeFile(JSON.stringify(next, null, 2));
+      // Commit to memory only AFTER the write succeeded — a failed write
+      // used to leave memory and disk diverged until restart.
+      this.records = next;
     });
 
     // Keep the queue alive even if one write fails.
@@ -93,11 +100,20 @@ class JsonHistoryService {
   }
 
   async clear() {
-    this._writeQueue = this._writeQueue.then(async () => {
-      this.records = [];
-      await this._writeFile(JSON.stringify([], null, 2));
+    // Mirror saveRecord's catch-recovery: without it, a failed clear left
+    // _writeQueue REJECTED forever, and every subsequent saveRecord silently
+    // chained onto the rejected promise — records were never written again
+    // (confirmed by repro: record 'b' was permanently lost after a failed
+    // clear). The catch resets the chain so the next write goes through.
+    const task = this._writeQueue.then(async () => {
+      const next = [];
+      await this._writeFile(JSON.stringify(next, null, 2));
+      this.records = next;
     });
-    await this._writeQueue;
+    this._writeQueue = task.catch((err) => {
+      console.error("[historyService] History clear failed:", err);
+    });
+    await task;
   }
 }
 

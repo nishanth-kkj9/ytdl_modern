@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDownloadStore } from "../stores/downloadStore";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { SidebarItem } from "./SidebarItem";
 
 interface DrawerPanelProps {
@@ -17,7 +18,14 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
   const clearHistory = useDownloadStore((s) => s.clearHistory);
 
   const active = queue.filter((i) => i.status === "downloading" || i.status === "queued");
+  // P1-8: failed/cancelled items were invisible — the drawer only rendered
+  // downloading/queued items, while SidebarItem's Retry button only renders
+  // on FAILED items. A failed download could never be retried from the UI.
+  // Surface them in a "Recent" section so retry is reachable and cancelled
+  // downloads don't vanish without trace.
+  const recent = queue.filter((i) => i.status === "failed" || i.status === "cancelled");
   const asideRef = useRef<HTMLElement>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     if (!open) triggerRef?.current?.focus();
@@ -133,10 +141,18 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
 
         <div id="drawer-tabpanel" role="tabpanel" aria-label={tab === "downloads" ? "Downloads" : "History"} className="flex-1 overflow-y-auto">
           {tab === "downloads" ? (
-            active.length === 0 ? (
+            active.length === 0 && recent.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-text-muted">No active downloads</p>
             ) : (
-              active.map((item) => <SidebarItem key={item.id} item={item} isActive={item.status === "downloading"} />)
+              <>
+                {active.map((item) => <SidebarItem key={item.id} item={item} isActive={item.status === "downloading"} />)}
+                {active.length > 0 && recent.length > 0 && (
+                  <p className="border-t border-border px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                    Recent
+                  </p>
+                )}
+                {recent.map((item) => <SidebarItem key={item.id} item={item} />)}
+              </>
             )
           ) : history.length === 0 ? (
             <p className="px-4 py-8 text-center text-xs text-text-muted">No downloads yet</p>
@@ -156,13 +172,26 @@ export function DrawerPanel({ open, tab, onTabChange, onClose, triggerRef }: Dra
           </button>
           <button
             type="button"
-            onClick={() => clearHistory()}
+            onClick={() => setConfirmClear(true)}
             disabled={history.length === 0}
             className="flex-1 rounded-lg bg-error/10 px-3 py-2 text-xs font-semibold text-error transition hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Clear history
           </button>
         </div>
+
+        <ConfirmDialog
+          open={confirmClear}
+          title="Clear history?"
+          message="This permanently removes all download history records. Downloaded files on disk are not affected."
+          confirmLabel="Clear History"
+          danger
+          onConfirm={() => {
+            clearHistory();
+            setConfirmClear(false);
+          }}
+          onCancel={() => setConfirmClear(false)}
+        />
       </aside>
     </div>
   );

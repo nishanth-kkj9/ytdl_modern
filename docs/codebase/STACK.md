@@ -6,7 +6,7 @@
 - **Framework:** React 19 (`react`, `react-dom` ^19.2.x)
 - **Language:** TypeScript 5.6 (strict mode, `tsconfig.json` `strict: true`)
 - **State:** Zustand 5 (`src/stores/downloadStore.ts`)
-- **Styling:** Tailwind CSS v4 (`@tailwindcss/postcss`, `tailwind.config.js`, `postcss.config.js`), custom `src/styles.css`
+- **Styling:** Tailwind CSS v4 (`@tailwindcss/postcss`, `postcss.config.js`, CSS-first `@theme` config in `src/styles.css`), custom `src/styles.css`
 - **Build/dev:** Vite 6, `@vitejs/plugin-react`
 - **Tests:** Vitest 3 + jsdom + `@testing-library/react` + `@testing-library/jest-dom`
 - **Lint:** ESLint 10 + `typescript-eslint` + `eslint-plugin-react-hooks`

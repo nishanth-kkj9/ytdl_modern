@@ -21,7 +21,13 @@ function App() {
   const engineStatus = useDownloadStore((state) => state.engineStatus);
   const wsConnected = useDownloadStore((state) => state.wsConnected);
 
-  const totalQueued = queue.length;
+  // P2-18: badge counts only genuinely active items — counting every queue
+  // row (incl. failed/cancelled) made "3 in queue" linger after everything
+  // finished or failed. Failed rows remain in the queue for retry (P1-8) but
+  // shouldn't advertise themselves as queued work.
+  const totalQueued = queue.filter(
+    (i) => i.status === "queued" || i.status === "downloading",
+  ).length;
 
   const [drawerTab, setDrawerTab] = useState<"downloads" | "history">("downloads");
   const [drawerOpen, setDrawerOpen] = useState(false);

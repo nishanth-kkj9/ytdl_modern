@@ -226,7 +226,7 @@ function collect(bus, event) {
   mgr.spawn = () => {}; // stub the auto-restart timer's spawn
 
   const crashes = collect(bus, "engine_crashed");
-  mgr._onChildExit(1, null);
+  mgr._onChildExit({}, 1, null);
   assert.strictEqual(mgr.readyTools, null, "tools must be cleared when the engine exits");
   assert.strictEqual(mgr.ready, false, "engine must be marked not-ready on exit");
   assert.strictEqual(crashes.length, 1, "non-zero exit should emit engine_crashed");
@@ -237,7 +237,7 @@ function collect(bus, event) {
   mgr2.handleEngineMessage({ type: "engine_ready", ffmpeg: true });
   const crashes2 = collect(bus2, "engine_crashed");
   mgr2.spawn = () => {};
-  mgr2._onChildExit(0, null);
+  mgr2._onChildExit({}, 0, null);
   assert.strictEqual(mgr2.readyTools, null, "tools must be cleared on clean exit too");
   assert.strictEqual(crashes2.length, 0, "clean exit must not emit engine_crashed");
 }

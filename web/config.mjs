@@ -4,6 +4,42 @@ import { readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+
+// ── .env loading ─────────────────────────────────────────────────────────────
+// The server must run on Node >=18 (web/package.json engines), which has no
+// --env-file flag (Node >=20.6 only), and this project deliberately avoids
+// third-party runtime deps — so a tiny zero-dependency loader reads web/.env
+// and the repo-root .env at startup. Semantics: process.env always wins over
+// .env (never overrides a real env var), a missing file is a silent no-op,
+// and comments/blank lines are skipped.
+function loadDotEnv() {
+  for (const file of [path.join(__dirname, ".env"), path.join(projectRoot, ".env")]) {
+    let raw;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch {
+      continue; // not present — nothing to load
+    }
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let value = trimmed.slice(eq + 1).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+      // Strip matching surrounding quotes ("…" or '…'), like shell/dotenv.
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  }
+}
+loadDotEnv();
 // Read the web package version at startup (throws only if package.json is missing).
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
