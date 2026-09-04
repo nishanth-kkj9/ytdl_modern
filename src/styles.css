@@ -1,5 +1,13 @@
-@import "@fontsource/sora";
-@import "@fontsource/jetbrains-mono";
+/* P2-30: the UI uses font-medium/semibold/bold (500/600/700) — importing
+   only the 400 index made the browser synthesize faux bold (blurry text).
+   Import the exact weights the design uses for both families. */
+@import "@fontsource/sora/400.css";
+@import "@fontsource/sora/500.css";
+@import "@fontsource/sora/600.css";
+@import "@fontsource/sora/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
 @import "tailwindcss";
 
 @theme {

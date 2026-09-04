@@ -1,13 +1,16 @@
 // scripts/dev-all.mjs — run the Vite dev server and the Node backend together.
 //
-// `npm run dev` only starts the frontend; API/WS calls are proxied to
-// 127.0.0.1:3000 (see vite.config.ts) and fail with ECONNREFUSED when the
+// `npm run dev` only starts the frontend; API/WS calls are proxied to the
+// backend port (see vite.config.ts) and fail with ECONNREFUSED when the
 // backend isn't running. This script starts both, tags their output, and
 // shuts the other one down if either exits (e.g. Ctrl+C or a crash).
 import { spawn } from "node:child_process";
 import net from "node:net";
 import process from "node:process";
 
+// P2-37: honor PORT the same way the server and the Vite proxy do, so all
+// three participants (server, proxy, this pre-flight check) stay in sync.
+const backendPort = Number(process.env.PORT || 3000);
 const children = [];
 
 // Pre-flight: detect an already-occupied port before spawning, so the user
@@ -67,10 +70,10 @@ process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
 // ── Pre-flight port checks ──────────────────────────────────────────────────
-if (await isPortInUse(3000)) {
-  console.error("[dev-all] ✗ Backend port 127.0.0.1:3000 is already in use.");
+if (await isPortInUse(backendPort)) {
+  console.error(`[dev-all] ✗ Backend port 127.0.0.1:${backendPort} is already in use.`);
   console.error("[dev-all]   A previous backend (or another app) is still listening there.");
-  console.error('[dev-all]   Stop it first — PowerShell: Get-NetTCPConnection -LocalPort 3000 | ForEach-Object { Stop-Process -Id $_.OwningProcess }');
+  console.error(`[dev-all]   Stop it first — PowerShell: Get-NetTCPConnection -LocalPort ${backendPort} | ForEach-Object { Stop-Process -Id $_.OwningProcess }`);
   process.exit(1);
 }
 if (await isPortInUse(5173)) {
@@ -80,13 +83,21 @@ if (await isPortInUse(5173)) {
 const frontend = spawnChild("vite", ["node_modules/vite/bin/vite.js"]);
 const backend = spawnChild("server", ["web/server.mjs"]);
 
-console.log("[dev-all] Frontend: http://localhost:5173  ·  Backend: http://127.0.0.1:3000");
+console.log(`[dev-all] Frontend: http://localhost:5173  ·  Backend: http://127.0.0.1:${backendPort}`);
 console.log("[dev-all] Press Ctrl+C to stop both.\n");
 
 for (const [child, label] of [
   [frontend, "Frontend"],
   [backend, "Backend"],
 ]) {
+  // P2-41: a spawn failure (bad path, missing binary) emits "error" without
+  // ever emitting "exit" — without this handler the failure crashes this
+  // script as an uncaught exception and orphans the sibling child.
+  child.on("error", (err) => {
+    if (exiting) return;
+    console.error(`\n[dev-all] ${label} failed to start: ${err.message}`);
+    shutdown(1);
+  });
   child.on("exit", (code) => {
     if (exiting) return;
     console.error(`\n[dev-all] ${label} exited (code ${code}) — shutting down the other…`);

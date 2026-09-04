@@ -3,6 +3,16 @@ import readline from "node:readline";
 import path from "node:path";
 import { config } from "../config.mjs";
 
+// P2-2: cap the length of a single engine line before it is parsed or
+// broadcast. A corrupted engine dumping one huge line used to be fully
+// buffered by readline and then fan-out to every connected browser.
+const MAX_ENGINE_LINE = 1_000_000; // 1 MB
+function clampEngineLine(line) {
+  return line.length > MAX_ENGINE_LINE
+    ? `${line.slice(0, MAX_ENGINE_LINE)}… [truncated ${line.length - MAX_ENGINE_LINE} chars]`
+    : line;
+}
+
 /**
  * engineManager.mjs — manages the Python engine child process.
  *
@@ -111,7 +121,8 @@ export class EngineManager {
     this.stdin = child.stdin;
 
     const stdout = readline.createInterface({ input: child.stdout });
-    stdout.on("line", (line) => {
+    stdout.on("line", (rawLine) => {
+      const line = clampEngineLine(rawLine);
       const trimmed = line.trim();
       if (!trimmed) return;
       let msg;
@@ -125,8 +136,8 @@ export class EngineManager {
     });
 
     const stderr = readline.createInterface({ input: child.stderr });
-    stderr.on("line", (line) => {
-      const trimmed = line.trim();
+    stderr.on("line", (rawLine) => {
+      const trimmed = clampEngineLine(rawLine).trim();
       if (trimmed) {
         this.bus.emit("engine_log", { type: "engine_log", message: trimmed });
       }

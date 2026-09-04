@@ -22,6 +22,12 @@ export function downloadRouter(engineManager) {
     }
 
     const id = String(body.id || "") || randomUUID();
+    // P2-4: the client id is echoed into engine commands and bus events —
+    // cap its length and restrict the charset so it can't carry arbitrary
+    // payload into logs/NDJSON. Omitting the header lets the server generate.
+    if (!/^[\w\-:]{1,128}$/.test(id)) {
+      return res.status(400).json({ error: "Invalid id: must be 1-128 chars of [A-Za-z0-9_-:]" });
+    }
     const format = String(body.format || "mp3").trim() || "mp3";
     const quality = String(body.quality || "high").trim() || "high";
     const mode = String(body.mode || "audio").trim() || "audio";
@@ -63,7 +69,9 @@ export function downloadRouter(engineManager) {
     if (body.title) cmd.title = String(body.title).slice(0, 500);
     if (body.uploader) cmd.uploader = String(body.uploader).slice(0, 256);
     if (body.thumbnail) cmd.thumbnail = String(body.thumbnail).slice(0, 500);
-    if (body.duration != null && Number.isFinite(Number(body.duration))) {
+    if (body.duration != null && body.duration !== "" && Number.isFinite(Number(body.duration))) {
+      // P2-5: Number("") === 0, so an empty string used to coerce the
+      // duration to 0 and display "0:00" — require a real value.
       cmd.duration = Number(body.duration);
     }
     if (body.webpage_url) cmd.webpage_url = String(body.webpage_url).slice(0, 500);

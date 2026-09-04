@@ -316,6 +316,23 @@ def _handle_command(command: dict[str, Any]) -> None:
         _write_error(str(command.get("id", "")), "UnknownCommand", f"Unsupported cmd: {cmd}")
 
 
+def _dispatch_safely(command: dict[str, Any]) -> None:
+    # P0-2: a bare exception here (e.g. os.makedirs hitting EACCES or a
+    # disk-full error inside _start_download) used to propagate to the
+    # top-level handler and EXIT the engine — killing all in-flight
+    # downloads and the IPC channel for every queued job. Contain it: emit a
+    # terminal InternalError for this command and keep reading the channel.
+    # (Extracted from main() so the guard is unit-testable.)
+    try:
+        _handle_command(command)
+    except Exception as exc:
+        _write_error(
+            str(command.get("id", "")),
+            "InternalError",
+            f"Command dispatch failed: {type(exc).__name__}: {exc}",
+        )
+
+
 def main() -> None:
     _emit_ready()
     while True:
@@ -339,18 +356,8 @@ def main() -> None:
             _write_error(None, "InvalidCommand", "Top-level JSON value must be an object")
             continue
 
-        # P0-2: a bare exception here (e.g. os.makedirs hitting EACCES or a
-        # disk-full error inside _start_download) used to propagate to the
-        # top-level handler and EXIT the engine — killing all in-flight
-        # downloads and the IPC channel for every queued job. Contain it.
-        try:
-            _handle_command(command)
-        except Exception as exc:
-            _write_error(
-                str(command.get("id", "")),
-                "InternalError",
-                f"Command dispatch failed: {type(exc).__name__}: {exc}",
-            )
+        # P0-2: dispatch through the guard so no command can kill the loop.
+        _dispatch_safely(command)
 
     # stdin closed — stop accepting work. wait=False so the process can exit
     # even with in-flight downloads (workers are non-daemon by default).

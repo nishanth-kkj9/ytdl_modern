@@ -18,9 +18,13 @@ export function fmtSize(bytes: number): string {
 }
 
 export function fmtDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.round(seconds % 60);
+  // Round the total first: deriving m and s independently of a rounded
+  // remainder produced "1:60" for inputs like 119.9 (floor(119.9/60)=1,
+  // round(59.9)=60). Rounding up front keeps the parts consistent.
+  const t = Math.max(0, Math.round(seconds));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
 }

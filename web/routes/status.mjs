@@ -32,6 +32,10 @@ export function statusRouter(engineManager) {
       uptimeSeconds: Math.floor(process.uptime()),
       engineReady: engineManager.isReady(),
       downloadDir: config.downloadsDir,
+      // Data dir holding history.json — lets test-smoke.mjs verify the
+      // SERVER's isolation (not its own env) before a destructive DELETE.
+      // Safe to expose: the Host/Origin allowlists keep this localhost-only.
+      dataDir: config.dataDir,
       // Tool availability surfaced from the last engine_ready message
       // (null/absent until the engine first reports readiness).
       tools,

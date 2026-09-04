@@ -24,6 +24,13 @@ describe("fmtDuration", () => {
   it("formats hours", () => {
     expect(fmtDuration(3600 + 600 + 9)).toBe("1:10:09");
   });
+
+  it("rounds the total first — fractional seconds never yield :60 (P2-31)", () => {
+    // Old bug: floor(119.9/60)=1 min, round(59.9)=60 s → "1:60".
+    expect(fmtDuration(119.9)).toBe("2:00");
+    expect(fmtDuration(59.6)).toBe("1:00");
+    expect(fmtDuration(59.4)).toBe("0:59");
+  });
 });
 
 describe("isSafeThumbnail", () => {
