@@ -69,8 +69,11 @@ export function LogPanel() {
 
   useEffect(() => {
     if (engineStatus !== "starting") {
-      setProlongedStarting(false);
-      return;
+      // Deferred to a macrotask: eslint-plugin-react-hooks v7
+      // (react-hooks/set-state-in-effect) forbids synchronous setState in an
+      // effect body — cascading renders. The timing is unchanged for users.
+      const r = setTimeout(() => setProlongedStarting(false), 0);
+      return () => clearTimeout(r);
     }
     const t = setTimeout(() => setProlongedStarting(true), 10_000);
     return () => clearTimeout(t);
