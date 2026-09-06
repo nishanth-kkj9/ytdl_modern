@@ -12,3 +12,9 @@ updates:
     directory: "/python-engine"
     schedule:
       interval: "weekly"
+  # CI/release actions are pinned by SHA — Dependabot keeps the pins current
+  # (and updates the trailing version comment) as new releases land.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

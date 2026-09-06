@@ -33,7 +33,7 @@ describe("ToastContainer", () => {
     });
     const { toasts } = useDownloadStore.getState();
     expect(toasts.length).toBe(5);
-    expect(toasts[0].message).toBe("msg-6"); // newest first
+    expect(toasts[0]!.message).toBe("msg-6"); // newest first
   });
 
   it("auto-dismisses a toast after the duration elapses", () => {

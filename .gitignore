@@ -61,3 +61,7 @@ server.pid
 .eslintcache
 coverage/
 .ruff_cache
+
+# release.yml builds the publish archive here (P3: was never ignored,
+# so a local release build polluted git status)
+release/

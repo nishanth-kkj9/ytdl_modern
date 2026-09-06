@@ -43,6 +43,12 @@ function LogLine({ entry }: { entry: LogEntry }) {
 export function LogPanel() {
   const [open, setOpen] = useState(true);
   const [filter, setFilter] = useState<LogLevel | "all">("all");
+  // P2-25: after engine_crashed the status flips to "starting", but the
+  // manual Restart button only appeared on the "error" state — a bounded
+  // restart exhaustion without a fatal_error left "Engine starting" pulsing
+  // forever with no recovery affordance. After 10 s of "starting", offer
+  // the same Restart button.
+  const [prolongedStarting, setProlongedStarting] = useState(false);
   const logs = useDownloadStore((s) => s.logs);
   const engineStatus = useDownloadStore((s) => s.engineStatus);
   const restartEngine = useDownloadStore((s) => s.restartEngine);
@@ -60,6 +66,15 @@ export function LogPanel() {
     () => (filter === "all" ? logs : logs.filter((l) => l.level === filter)),
     [logs, filter]
   );
+
+  useEffect(() => {
+    if (engineStatus !== "starting") {
+      setProlongedStarting(false);
+      return;
+    }
+    const t = setTimeout(() => setProlongedStarting(true), 10_000);
+    return () => clearTimeout(t);
+  }, [engineStatus]);
 
   // Logs are stored newest-first (prepended), so the newest entry is at the
   // top of the scroll container — scroll to 0, not scrollHeight.
@@ -99,12 +114,12 @@ export function LogPanel() {
           </svg>
         </button>
         <div className="ml-3 flex shrink-0 items-center gap-2">
-          {engineStatus === "error" && (
+          {(engineStatus === "error" || prolongedStarting) && (
             <button
               type="button"
               onClick={() => restartEngine()}
               aria-label="Restart engine"
-              title="Engine crashed — click to restart"
+              title={engineStatus === "error" ? "Engine crashed — click to restart" : "Engine is taking a while — click to restart"}
               className="btn btn-danger flex items-center gap-1.5 px-3 py-1.5 text-[11px]"
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -154,7 +169,7 @@ export function LogPanel() {
                     aria-pressed={active}
                     className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide transition ${
                       active
-                        ? "border-border bg-raised text-text-primary"
+                        ? "border-border bg-raised text-text"
                         : "border-border/40 text-text-muted hover:border-border/70 hover:text-text-secondary"
                     }`}
                   >

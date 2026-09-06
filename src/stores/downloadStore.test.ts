@@ -37,8 +37,8 @@ describe("downloadStore", () => {
     );
     const s = useDownloadStore.getState();
     expect(s.queue.length).toBe(1);
-    expect(s.queue[0].status).toBe("downloading");
-    expect(s.queue[0].title).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(s.queue[0]!.status).toBe("downloading");
+    expect(s.queue[0]!.title).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
     expect(invoke).toHaveBeenCalledWith("start_download", expect.anything());
   });
 
@@ -61,7 +61,7 @@ describe("downloadStore", () => {
       ],
     });
     await useDownloadStore.getState().cancelDownload("d1");
-    expect(useDownloadStore.getState().queue[0].status).toBe("cancelled");
+    expect(useDownloadStore.getState().queue[0]!.status).toBe("cancelled");
     expect(invoke).toHaveBeenCalledWith("cancel_download", { id: "d1" });
   });
 

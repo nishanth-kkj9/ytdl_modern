@@ -49,11 +49,12 @@ function buildChecklist(meta: MetadataResult): CheckEntry[] {
     { label: "Title", key: "title", state: state("title") },
     { label: "Artist", key: "artist", state: state("artist") },
     { label: "Album", key: "album", state: state("album") },
-    { label: "Date", key: "upload_date", state: state("date") },
+    { label: "Date", key: "upload_date", state: state("upload_date") },
     { label: "Genre", key: "genre", state: state("genre") },
     { label: "Language", key: "language", state: state("language") },
     { label: "Video ID", key: "video_id", state: state("video_id") },
-    { label: "Comment", key: "comment", state: state("comment") },
+    // P2-26: the "Comment" row was removed — the backend never embeds or
+    // verifies a comment field, so this row could only ever render "N/A".
     { label: "Cover Art", key: "cover_art", state: state("cover_art") },
     { label: "Description", key: "description", state: state("description") },
   ];

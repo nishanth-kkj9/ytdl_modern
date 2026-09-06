@@ -25,7 +25,7 @@ describe("UIUX-01 DrawerPanel focus management", () => {
       'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
     );
     expect(focusables.length).toBeGreaterThan(0);
-    const last = focusables[focusables.length - 1];
+    const last = focusables[focusables.length - 1]!;
     last.focus();
     expect(document.activeElement).toBe(last);
     // Simulate Tab from the last focusable element.

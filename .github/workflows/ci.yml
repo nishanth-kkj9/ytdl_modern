@@ -110,7 +110,7 @@ jobs:
 
       - name: Install test runner
         run: |
-          pip install pytest pip-audit
+          pip install -r python-engine/requirements-dev.txt pip-audit
 
       - name: Audit Python deps
         run: pip-audit -r python-engine/requirements.lock || true

@@ -332,21 +332,26 @@ describe("useEngineEvents — WS reconnect reconciliation", () => {
     );
   });
 
-  it("marks all downloading items failed when the status endpoint is unreachable", async () => {
+  it("leaves downloading items untouched when the status endpoint is unreachable (P2-23)", async () => {
     await setup();
     useDownloadStore.setState({ queue: [makeItem("x")] });
     captured.invokeError = true;
 
     captured.reconnectHandler?.();
 
-    await waitFor(() => {
-      expect(useDownloadStore.getState().queue[0]?.status).toBe("failed");
-    });
+    // Give the (async) handler a tick to run.
+    await new Promise((r) => setTimeout(r, 10));
+
+    // P2-23: a transient get_active_jobs failure must NOT false-fail every
+    // in-flight download — the old code fell through with an empty active
+    // list and marked everything "status unknown". The item stays exactly
+    // as it was; the next progress event or reconnect will resolve it.
+    expect(useDownloadStore.getState().queue[0]?.status).toBe("downloading");
     expect(
       useDownloadStore
         .getState()
         .logs.some((l) => l.message.includes("status unknown"))
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("does nothing on reconnect when nothing is downloading", async () => {

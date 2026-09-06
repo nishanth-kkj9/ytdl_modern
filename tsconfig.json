@@ -20,7 +20,13 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // P2-39 completion: indexed access yields T | undefined (forces explicit
+    // narrowing on array/object lookups) and base-class members must be
+    // marked `override` — both catch real drift, and the codebase is clean
+    // under them (see the narrowing fixes shipped alongside this change).
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true
   },
   "include": ["src"]
 }

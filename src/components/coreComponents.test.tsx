@@ -30,7 +30,7 @@ describe("TEST-01 core component coverage", () => {
     useDownloadStore.setState({ queue: [{ id: "d", url: "u", title: "T", format: "mp3", quality: "high", status: "downloading", progress: 0, downloaded: 0, total: 0, speed: 0, type: "audio" }] });
     render(<WaveformProgress />);
     expect(screen.getByLabelText("Downloading T")).toBeInTheDocument();
-    act(() => useDownloadStore.setState({ queue: [{ ...useDownloadStore.getState().queue[0], status: "completed" }] }));
+    act(() => useDownloadStore.setState({ queue: [{ ...useDownloadStore.getState().queue[0]!, status: "completed" }] }));
     expect(screen.queryByLabelText("Downloading T")).toBeNull();
   });
 
@@ -60,7 +60,7 @@ describe("TEST-01 core component coverage", () => {
     // …then the user edits the input to URL B before clicking Add.
     fireEvent.change(screen.getByLabelText("YouTube URL"), { target: { value: "https://youtu.be/BBBBBBBBBBB" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    const [, , , , meta] = enqueueDownload.mock.calls[0];
+    const [, , , , meta] = enqueueDownload.mock.calls[0]!;
     expect(meta).toBeUndefined();
   });
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import math
 import os
 import re
 import shutil
@@ -524,7 +525,7 @@ class Metadata:
 
         date_raw = info.get("upload_date", "")
         upload_date = ""
-        if date_raw and len(date_raw) == 8:
+        if date_raw and len(date_raw) == 8 and date_raw.isdigit():
             try:
                 upload_date = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:]}"
             except Exception:
@@ -580,7 +581,7 @@ def _collision_safe_tmp(filepath: str, suffix: str = ".meta") -> str:
 def _atomic_mutagen_save(
     audio_obj,
     filepath: str,
-    save_kwargs: dict = {},
+    save_kwargs: dict | None = None,
 ) -> None:
     """Save mutagen tags to a collision-safe temp file, then atomically
     replace the original. If saving or verification fails, the original
@@ -590,6 +591,8 @@ def _atomic_mutagen_save(
     to a temp path, save tags onto the temp, then os.replace() it over.
     This is crash-safe: the original is never corrupted.
     """
+    if save_kwargs is None:
+        save_kwargs = {}
     tmp = _collision_safe_tmp(filepath)
     try:
         shutil.copy2(filepath, tmp)
@@ -1283,6 +1286,15 @@ class AudioDownloadEngine:
         self.audio_format   = audio_format
         self.quality        = quality
         self.mode           = mode
+        # P2-9: fail fast on an unknown audio format. The old code silently
+        # coerced the postprocessor to opus while the progress hook and file
+        # resolution still looked for the requested extension — an unsupported
+        # value produced a confusing verify failure instead of a clear error.
+        if self.mode == "audio" and self.audio_format not in AUDIO_FORMATS:
+            raise ValueError(
+                f"Unsupported audio_format '{self.audio_format}' "
+                f"(supported: {', '.join(sorted(AUDIO_FORMATS))})"
+            )
         self.embed_metadata = embed_metadata
         self.cover_art      = cover_art
         self.trim_start     = trim_start
@@ -1627,6 +1639,10 @@ class AudioDownloadEngine:
             total      = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             downloaded = d.get("downloaded_bytes", 0)
             speed      = float(d.get("speed") or 0.0)
+            # NaN/Inf would serialize as a bare `NaN` token in the NDJSON
+            # channel and break the Node side's strict JSON.parse — clamp.
+            if not math.isfinite(speed):
+                speed = 0.0
             filename   = os.path.basename(d.get("filename", ""))
             self._tracker.record(speed)
             if self._progress_cb:
@@ -1886,7 +1902,14 @@ class AudioDownloadEngine:
             matches = [
                 os.path.join(self.output_dir, f)
                 for f in files
+                # P2-11: exclude in-flight temp artifacts of concurrent
+                # downloads — ".meta." (metadata-embed tmp), ".trim." (trim
+                # tmp) and generic ".tmp" partials all end with the target
+                # extension but must never be bound as the final output.
                 if f.lower().endswith(f".{ext}")
+                and ".meta." not in f.lower()
+                and ".trim." not in f.lower()
+                and not f.lower().endswith(".tmp")
             ]
             if matches:
                 # Prefer files created after this download started.

@@ -1,0 +1,7 @@
+# Test-only dependencies — not needed to RUN the engine.
+# P2-17: pytest is imported by python-engine/tests/ but was never declared,
+# so a fresh clone had no declared way to install the test toolchain.
+# Install: pip install -r python-engine/requirements-dev.txt
+# Requires Python >= 3.9 (the engine uses `dict[str, Any]` PEP 585 syntax).
+-r requirements.txt
+pytest>=8.0,<9.0

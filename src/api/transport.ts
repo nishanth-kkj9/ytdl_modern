@@ -14,6 +14,10 @@ export type UnlistenFn = () => void;
 // ── WebSocket event bus state ────────────────────────────────────────────────
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
+// P2-28: the pending reconnect timer is tracked so resetTransport() can
+// cancel it — otherwise a timer scheduled just before test teardown (or
+// Vite HMR) fires later and opens a real socket against a torn-down env.
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 // Tracks whether the socket has ever opened, so `onopen` can distinguish the
 // first connect from a reconnect (reconnects trigger state reconciliation).
 let everConnected = false;
@@ -54,7 +58,17 @@ function ensureWebSocket() {
   if (ws) return;
   setConnectionState("connecting");
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  try {
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+  } catch (err) {
+    // P2-28: a constructor throw (invalid URL, blocked origin) previously
+    // left connectionState stuck on "connecting" forever — no onopen /
+    // onclose ever fires when the object was never created.
+    console.error("[transport] WebSocket construction failed:", err);
+    ws = null;
+    setConnectionState("disconnected");
+    return;
+  }
   ws.onopen = () => {
     reconnectAttempts = 0;
     setConnectionState("connected");
@@ -102,8 +116,39 @@ function ensureWebSocket() {
     // server doesn't trigger an infinite rapid-fire reconnect loop.
     const delay = Math.min(1500 * Math.pow(2, reconnectAttempts), 30000);
     reconnectAttempts++;
-    setTimeout(ensureWebSocket, delay);
+    reconnectTimer = setTimeout(ensureWebSocket, delay);
   };
+}
+
+/**
+ * P2-28: tear down the reconnect loop — cancels any pending reconnect
+ * timer, closes the live socket, and resets attempt state. Intended for
+ * test teardown and Vite HMR, where a stray 1.5 s timer used to open a
+ * real socket against a torn-down environment. Event handlers stay
+ * registered: the next ensureWebSocket() (via listen/onReconnect) reuses
+ * them on the fresh socket.
+ */
+export function resetTransport(): void {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectAttempts = 0;
+  if (ws) {
+    const sock = ws;
+    ws = null;
+    sock.onopen = null;
+    sock.onmessage = null;
+    sock.onerror = null;
+    sock.onclose = null;
+    try {
+      sock.close();
+    } catch {
+      /* already closed */
+    }
+  }
+  everConnected = false;
+  setConnectionState("disconnected");
 }
 
 async function webFetch(url: string, method: string, body?: unknown, timeoutMs = 15000) {
@@ -167,7 +212,8 @@ export async function invoke<T = any>(command: string, args?: Record<string, any
     case "cancel_download":
       return webFetch(`${base}/api/download/cancel`, "POST", { id: args?.id });
     case "restart_engine":
-      return webFetch(`${base}/api/engine/restart`, "POST", {});
+      // P2-28: engine teardown + respawn can outlast the blanket 15 s.
+      return webFetch(`${base}/api/engine/restart`, "POST", {}, 45000);
     case "get_download_dir":
       return webFetch(`${base}/api/status`, "GET").then((s) => s.downloadDir);
     case "get_active_jobs":

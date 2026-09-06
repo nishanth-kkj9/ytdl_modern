@@ -32,6 +32,29 @@ async function main() {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    // P2-42: Content-Security-Policy for the served production build. The
+    // built index.html loads exactly one external module script and no inline
+    // scripts/handlers (verified), so script-src can stay strict. Style needs
+    // 'unsafe-inline' because React renders style="" attributes (CSP blocks
+    // inline style attributes without it); thumbnails come from i.ytimg.com
+    // (https: + data:); the app speaks WebSocket to its own origin, which
+    // 'self' does not cover cross-scheme, hence the explicit ws:/wss:.
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' https: data:",
+        "font-src 'self' data:",
+        "connect-src 'self' ws: wss:",
+        "media-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join("; ")
+    );
     next();
   });
 

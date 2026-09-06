@@ -53,7 +53,7 @@ describe("transport connection state", () => {
     await listen("engine-event", () => {});
     expect(getConnectionState()).toBe("connecting");
 
-    const sock = FakeWebSocket.instances[0];
+    const sock = FakeWebSocket.instances[0]!;
     sock.onopen?.();
     expect(getConnectionState()).toBe("connected");
 

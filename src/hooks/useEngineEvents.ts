@@ -15,6 +15,10 @@ export function useEngineEvents() {
   const addToast = useDownloadStore((state) => state.addToast);
 
   const downloadBaseRef = useRef<string | null>(null);
+  // P2-23: prevents overlapping reconcile passes when onReconnect fires
+  // twice in quick succession — each pass invokes get_active_jobs, and a
+  // later pass could mark items the earlier pass had just decided about.
+  const reconcileInFlight = useRef(false);
 
   function parseFormats(raw: unknown): FormatInfo[] {
     if (!Array.isArray(raw)) return [];
@@ -247,8 +251,17 @@ export function useEngineEvents() {
               updateQueueItem(id, { status: "failed", message: errMsg });
               setStatusMessage("Download failed.");
             } else if (id) {
+              // P2-24: WS-path probe failures previously only touched the
+              // small grey status strip — the red "Probe failed" alert with
+              // its Retry button existed solely on the REST path. Surface
+              // them identically so both paths behave the same.
+              useDownloadStore.setState({ probeError: errMsg });
+              addToast(`Probe failed: ${errMsg}`, "error");
               setStatusMessage("Probe failed.");
             } else {
+              // P2-24: background engine failures (no id) get a toast too —
+              // the grey strip alone is far too easy to miss.
+              addToast(`Engine error: ${errMsg}`, "error");
               setStatusMessage("Engine error.");
             }
             return;
@@ -304,32 +317,42 @@ export function useEngineEvents() {
       // failed with an honest "status unknown" message — we never guess
       // "completed", since the file may or may not exist.
       const unlistenReconnectLocal = onReconnect(async () => {
+        if (reconcileInFlight.current) return;
         const stale = useDownloadStore
           .getState()
           .queue.filter((qi) => qi.status === "downloading");
         if (stale.length === 0) return;
 
-        let activeIds: string[] = [];
+        reconcileInFlight.current = true;
         try {
-          const jobs = await invoke<{ id: string; status: string }[]>(
-            "get_active_jobs"
-          );
-          activeIds = (jobs ?? []).map((j) => String(j.id));
-        } catch {
-          // Status endpoint unreachable — treat every in-flight item as stale.
-        }
-
-        for (const item of stale) {
-          if (!activeIds.includes(item.id)) {
-            updateQueueItem(item.id, {
-              status: "failed",
-              message: "Connection lost — download status unknown",
-            });
-            addLog(
-              `Connection lost during download: ${item.id} — status unknown. Check history or retry.`,
-              "warn"
+          let activeIds: string[] | null = null;
+          try {
+            const jobs = await invoke<{ id: string; status: string }[]>(
+              "get_active_jobs"
             );
+            activeIds = (jobs ?? []).map((j) => String(j.id));
+          } catch {
+            // P2-23: the endpoint itself failed transiently — leave the
+            // in-flight items ALONE and rely on the next progress event or a
+            // later reconnect. The old code fell through with an empty list,
+            // false-failing every downloading item on a server blip.
+            return;
           }
+
+          for (const item of stale) {
+            if (!activeIds.includes(item.id)) {
+              updateQueueItem(item.id, {
+                status: "failed",
+                message: "Connection lost — download status unknown",
+              });
+              addLog(
+                `Connection lost during download: ${item.id} — status unknown. Check history or retry.`,
+                "warn"
+              );
+            }
+          }
+        } finally {
+          reconcileInFlight.current = false;
         }
       });
       if (cancelled) {

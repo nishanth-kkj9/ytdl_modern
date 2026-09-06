@@ -65,6 +65,10 @@ def _get_log_path() -> str:
 
 
 def _write(level: str, message: str) -> None:
+    # P2-16: titles/URLs are attacker-controlled strings; a raw newline would
+    # forge extra log entries and unbounded titles bloat the file. Collapse
+    # line breaks and cap the length (call sites already emit one line each).
+    message = " ".join(str(message).splitlines()).strip()[:500]
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] [{level:<7}] {message}\n"
     try:

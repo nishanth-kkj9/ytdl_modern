@@ -7,6 +7,12 @@ on:
 
 permissions: {}
 
+# One release build at a time: a rapid tag push cancels the superseded run
+# instead of racing it to publish two releases for overlapping refs.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build & Package
@@ -19,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install frontend deps
@@ -49,10 +55,18 @@ jobs:
           cp -r python-engine release/ytdl-modern/
           rm -rf release/ytdl-modern/python-engine/__pycache__ \
                  release/ytdl-modern/python-engine/.pytest_cache
-          cp package.json README.md release/ytdl-modern/
+          cp package.json README.md LICENSE release/ytdl-modern/
           cd release
           tar -czf ytdl-modern-${{ github.ref_name }}.tar.gz ytdl-modern/
           zip -r ytdl-modern-${{ github.ref_name }}.zip ytdl-modern/
+
+      - name: Generate SHA-256 checksums
+        working-directory: release
+        run: |
+          sha256sum ytdl-modern-${{ github.ref_name }}.tar.gz \
+                    ytdl-modern-${{ github.ref_name }}.zip \
+            > sha256sums.txt
+          cat sha256sums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -63,6 +77,7 @@ jobs:
           files: |
             release/ytdl-modern-${{ github.ref_name }}.tar.gz
             release/ytdl-modern-${{ github.ref_name }}.zip
+            release/sha256sums.txt
           body: |
             ## YTDL Modern ${{ github.ref_name }}
 

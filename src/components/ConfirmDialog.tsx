@@ -33,10 +33,15 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key !== "Escape") return;
+      // P3: capture-phase + stopPropagation so a dialog rendered inside
+      // another Escape-closer (DrawerPanel) doesn't take its parent down
+      // with the same keypress — Escape dismisses the topmost layer only.
+      e.stopPropagation();
+      onCancel();
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [open, onCancel]);
 
   // Trap focus within the dialog while open.
@@ -54,8 +59,8 @@ export function ConfirmDialog({
       if (e.key !== "Tab") return;
       const items = focusables();
       if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();

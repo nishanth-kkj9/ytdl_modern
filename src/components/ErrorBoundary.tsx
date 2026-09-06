@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -7,23 +7,25 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  // P3: bumped on "Try Again" so children remount instead of resuming.
+  attempt: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, attempt: 0 };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, attempt: 0 };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info.componentStack);
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         <section className="card mx-auto mt-8 max-w-lg px-6 py-8 text-center">
@@ -38,7 +40,13 @@ export class ErrorBoundary extends Component<Props, State> {
           </p>
           <button
             type="button"
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() =>
+              this.setState((s) => ({
+                hasError: false,
+                error: null,
+                attempt: s.attempt + 1,
+              }))
+            }
             className="btn btn-ghost mx-auto mt-5"
           >
             Try Again
@@ -47,6 +55,9 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    // P3: the key remounts the subtree on "Try Again" — simply clearing
+    // hasError handed the same broken component instance its old state back
+    // and it re-crashed immediately.
+    return <Fragment key={this.state.attempt}>{this.props.children}</Fragment>;
   }
 }

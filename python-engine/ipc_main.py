@@ -311,6 +311,10 @@ def _handle_command(command: dict[str, Any]) -> None:
             "type": "jobs_result",
             "request_id": request_id,
             "jobs": jobs,
+            # P2-13: backpressure signal — how many accepted downloads are
+            # still waiting for a worker slot. The Node layer can surface the
+            # real queue depth instead of assuming every job starts at once.
+            "queued": sum(1 for j in jobs if j["status"] == "queued"),
         })
     else:
         _write_error(str(command.get("id", "")), "UnknownCommand", f"Unsupported cmd: {cmd}")

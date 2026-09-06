@@ -77,6 +77,11 @@ def sanitize_filename(name: str) -> str:
     name = name.lstrip(".").strip(". ")
     if not name:
         return "untitled"
+    # P3: cap the component length — filesystems reject >255 bytes, and the
+    # engine appends extensions/suffixes (".opus", ".meta.<id>", ".trim.tmp")
+    # on top of the name. 200 leaves generous headroom.
+    if len(name) > 200:
+        name = name[:200].rstrip(". ")
     # Replace Windows reserved device names
     base = name.split(".", 1)[0].upper()
     if base in _WINDOWS_RESERVED:
