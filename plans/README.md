@@ -30,6 +30,7 @@ gaps — none are urgent, all are low-risk.
 | 004 | Release archive excludes `node_modules` | P2 | ~15 min | DONE |
 | 005 | Add ESLint (typescript-eslint + react-hooks) | P2 | ~1 hr | DONE |
 | 006 | WebSocket reconnect state reconciliation | P3 | ~2–3 hrs | DONE |
+| R3 | Round 3 evidence-based sweep (F-01..F-18: server-side history, queue restore, result guard, music.youtube/live URLs, LogPanel scroll, recover() terminal events, probe deadline, trim wiring, verification honesty, CSP/engines/docs hygiene) | P2 | ~1 day | DONE — see `docs/codebase/CONCERNS.md` "Round 3 findings" |
 
 ## Recommended execution order
 

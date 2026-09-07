@@ -19,6 +19,18 @@ const ACCEPT = [
   "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
   "m.youtube.com/watch?v=dQw4w9WgXcQ",
   "https://m.youtube.com/shorts/dQw4w9WgXcQ",
+  // YT Music (F-04) and /live/ permalinks — routine pastes for an
+  // audio-first downloader; used to be rejected as non-YouTube.
+  "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+  "music.youtube.com/watch?v=dQw4w9WgXcQ",
+  "https://www.youtube.com/live/dQw4w9WgXcQ",
+];
+
+const REJECT_MUSIC = [
+  // playlist pages are unsupported by design — pin against over-broadening
+  "https://music.youtube.com/playlist?list=PLxyzxyzxyz",
+  // "music" as part of a FOREIGN domain must not match the music subdomain
+  "https://livemusic.example.com/watch?v=dQw4w9WgXcQ",
 ];
 
 const REJECT = [
@@ -41,7 +53,7 @@ describe("YouTube URL regex parity (frontend vs backend)", () => {
   });
 
   it("rejects the same URLs", () => {
-    for (const url of REJECT) {
+    for (const url of [...REJECT, ...REJECT_MUSIC]) {
       expect(FRONTEND_REGEX.test(url), `frontend should reject: ${url}`).toBe(false);
       expect(isYouTubeUrl(url), `backend should reject: ${url}`).toBe(false);
     }

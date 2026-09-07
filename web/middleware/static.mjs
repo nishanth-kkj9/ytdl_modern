@@ -11,9 +11,13 @@ export function staticMiddleware(config) {
 
   // Serve downloaded media files by filename.
   // Hardened: no fallthrough to SPA, no dotfiles, no index (SEC-01).
+  // F-08: maxAge 1h served STALE copies for up to an hour after a
+  // re-download overwrote a same-named file (duplicate-title collision).
+  // Media files are local; etag/Last-Modified revalidation is cheap and
+  // always serves the bytes that are actually on disk.
   router.use(
     "/downloads",
-    express.static(config.downloadsDir, { fallthrough: false, dotfiles: "deny", index: false, maxAge: "1h" })
+    express.static(config.downloadsDir, { fallthrough: false, dotfiles: "deny", index: false, maxAge: 0, etag: true, lastModified: true })
   );
 
   // Serve the built React frontend if present.

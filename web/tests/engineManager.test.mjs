@@ -302,4 +302,34 @@ function collect(bus, event) {
   assert.strictEqual(cancelled[0].id, "dl-1", "cancelled event should carry the removed id");
 }
 
+// Test 14 (IMP-06): recover() emits a terminal error for every discarded pending
+// command, so browsers never hang on ids the new engine will never see.
+{
+  const bus = makeBus();
+  const mgr = new EngineManager(bus);
+
+  // Engine down: commands stay queued.
+  mgr.child = {};
+  mgr.stdin = null;
+  mgr.ready = false;
+  mgr.sendCommand({ cmd: "download", id: "q-1", url: "https://example.com" });
+  mgr.sendCommand({ cmd: "download", id: "q-2", url: "https://example.com" });
+  assert.strictEqual(mgr.pendingCommands.length, 2);
+
+  const errors = collect(bus, "error");
+  // Stub spawn to a dummy child (recover() spawns a replacement).
+  mgr.spawn = () => {};
+
+  mgr.recover();
+
+  assert.strictEqual(mgr.pendingCommands.length, 0, "pending must be cleared");
+  const e1 = errors.find((e) => e.id === "q-1");
+  const e2 = errors.find((e) => e.id === "q-2");
+  assert.ok(e1, "q-1 should get a terminal error");
+  assert.ok(e2, "q-2 should get a terminal error");
+  assert.strictEqual(e1.error_type, "EngineRestarted");
+  assert.strictEqual(e2.error_type, "EngineRestarted");
+  console.log("✓ recover() emits terminal errors for discarded pending commands");
+}
+
 console.log("All engineManager tests passed.");

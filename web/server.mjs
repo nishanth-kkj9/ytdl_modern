@@ -5,6 +5,7 @@ import { config, allowedHostsFor } from "./config.mjs";
 import { EventBus } from "./eventBus.mjs";
 import { EngineManager } from "./services/engineManager.mjs";
 import { historyService } from "./services/historyService.mjs";
+import { attachHistoryPersistence } from "./services/historyPersistence.mjs";
 import { probeRouter } from "./routes/probe.mjs";
 import { cancelRouter, downloadRouter } from "./routes/download.mjs";
 import { historyRouter } from "./routes/history.mjs";
@@ -19,6 +20,9 @@ async function main() {
   await historyService.init();
   const bus = new EventBus();
   const engine = new EngineManager(bus);
+  // F-01: history must survive the browser tab — persist successful results
+  // server-side (client saves dedupe against this by id).
+  const unsubscribeHistory = attachHistoryPersistence(bus, historyService);
 
   // ── Express app ─────────────────────────────────────────────────────────
   const app = express();
@@ -38,7 +42,9 @@ async function main() {
     // 'unsafe-inline' because React renders style="" attributes (CSP blocks
     // inline style attributes without it); thumbnails come from i.ytimg.com
     // (https: + data:); the app speaks WebSocket to its own origin, which
-    // 'self' does not cover cross-scheme, hence the explicit ws:/wss:.
+    // 'self' does not cover cross-scheme — but only the loopback origins this
+    // server is reachable on are allowed (F-16: a bare ws: let the SPA open
+    // sockets to ANY WebSocket server; the app only ever talks to itself).
     res.setHeader(
       "Content-Security-Policy",
       [
@@ -47,7 +53,7 @@ async function main() {
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' https: data:",
         "font-src 'self' data:",
-        "connect-src 'self' ws: wss:",
+        "connect-src 'self' ws://127.0.0.1:* ws://localhost:* wss://localhost:*",
         "media-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
@@ -210,6 +216,7 @@ async function main() {
     console.log("\nShutting down...");
     clearInterval(heartbeat);
     unsubs.forEach((u) => u());
+    unsubscribeHistory();
     engine.stop();
     // PR-04: wss.close() only stops accepting NEW upgrades; connected clients
     // would keep server.close()'s callback from firing until the 2s force

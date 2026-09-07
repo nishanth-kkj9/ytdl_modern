@@ -6,9 +6,38 @@
 // copy only gates the Probe/Add buttons. src/urlRegex.test.ts pins both
 // patterns to the same fixture set — update both together.
 export const YOUTUBE_REGEX =
-  /^(?:https?:\/\/)?(?:(?:www|m)\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
+  /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(youtube\.com\/(watch\?.*v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)[\w\-]{11}(?![\w\-])(?:[?&#\/].*)?$/i;
 
 export const MAX_URL_LENGTH = 2048;
+
+// F-10: seconds or HH:MM:SS / MM:SS — mirrors python engine.parse_timestamp
+// (engine.py) so both layers accept/reject the same shapes. Returns seconds,
+// or null when the value is not a valid non-negative timestamp.
+export function parseTimestamp(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const parts = text.trim().split(":");
+  if (parts.length > 3) return null;
+  try {
+    let total;
+    if (parts.length === 1) {
+      total = parseFloat(parts[0]);
+    } else if (parts.length === 2) {
+      const m = parseInt(parts[0], 10);
+      const s = parseFloat(parts[1]);
+      if (!Number.isFinite(m) || !Number.isFinite(s)) return null;
+      total = m * 60 + s;
+    } else {
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const s = parseFloat(parts[2]);
+      if (!Number.isFinite(h) || !Number.isFinite(m) || !Number.isFinite(s)) return null;
+      total = h * 3600 + m * 60 + s;
+    }
+    return Number.isFinite(total) && total >= 0 && total < 86400 * 7 ? total : null;
+  } catch {
+    return null;
+  }
+}
 
 export function isYouTubeUrl(url) {
   if (typeof url !== "string" || url.length === 0 || url.length > MAX_URL_LENGTH) return false;

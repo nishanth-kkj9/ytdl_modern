@@ -15,6 +15,7 @@ import { useDownloadStore } from "./stores/downloadStore";
 function App() {
   useEngineEvents();
   const loadHistory = useDownloadStore((state) => state.loadHistory);
+  const restoreActiveJobs = useDownloadStore((state) => state.restoreActiveJobs);
   const queue = useDownloadStore((state) => state.queue);
   const probeInfo = useDownloadStore((state) => state.probeInfo);
   const selectedMode = useDownloadStore((state) => state.selectedMode);
@@ -35,7 +36,10 @@ function App() {
 
   useEffect(() => {
     loadHistory();
-  }, [loadHistory]);
+    // F-02: a refresh must not orphan in-flight downloads — rebuild the
+    // queue from the server's active-jobs snapshot.
+    restoreActiveJobs();
+  }, [loadHistory, restoreActiveJobs]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

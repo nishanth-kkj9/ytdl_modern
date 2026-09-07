@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { config } from "../config.mjs";
-import { isYouTubeUrl } from "../validate.mjs";
+import { isYouTubeUrl, parseTimestamp } from "../validate.mjs";
 
 /**
- * download.mjs — POST /api/download, POST /api/cancel
+ * download.mjs — POST /api/download, POST /api/download/cancel
  * Bridges download commands to the engine. Progress/result events are
  * delivered to the browser over WebSocket.
  */
@@ -53,6 +53,24 @@ export function downloadRouter(engineManager) {
       return res.status(400).json({ error: `Invalid quality: ${quality}. Valid: ${validQualities.join(", ")}` });
     }
 
+    // F-10: optional trim window. Validated here AND again in the engine —
+    // seconds or HH:MM:SS / MM:SS (parseTimestamp mirrors engine.parse_timestamp).
+    let trimStart = null;
+    let trimEnd = null;
+    if (body.trim_start != null || body.trim_end != null) {
+      trimStart = body.trim_start == null ? null : parseTimestamp(String(body.trim_start));
+      trimEnd = body.trim_end == null ? null : parseTimestamp(String(body.trim_end));
+      if (body.trim_start != null && trimStart === null) {
+        return res.status(400).json({ error: "Invalid trim_start: use seconds or HH:MM:SS" });
+      }
+      if (body.trim_end != null && trimEnd === null) {
+        return res.status(400).json({ error: "Invalid trim_end: use seconds or HH:MM:SS" });
+      }
+      if (trimStart != null && trimEnd != null && trimEnd <= trimStart) {
+        return res.status(400).json({ error: "trim_end must be greater than trim_start" });
+      }
+    }
+
     const outputDir = config.downloadsDir;
 
     const cmd = {
@@ -75,6 +93,10 @@ export function downloadRouter(engineManager) {
       cmd.duration = Number(body.duration);
     }
     if (body.webpage_url) cmd.webpage_url = String(body.webpage_url).slice(0, 500);
+    // F-10: only forward a present, valid trim value — absence must stay
+    // indistinguishable from "no trim" for the engine.
+    if (trimStart != null) cmd.trim_start = trimStart;
+    if (trimEnd != null) cmd.trim_end = trimEnd;
 
     try {
       engineManager.sendCommand(cmd);

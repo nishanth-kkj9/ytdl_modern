@@ -368,6 +368,37 @@ describe("useEngineEvents — WS reconnect reconciliation", () => {
 
     expect(useDownloadStore.getState().queue[0]?.status).toBe("completed");
   });
+
+  it("a late successful result does not resurrect a cancelled item (F-03)", async () => {
+    await setup();
+    // Seed a row the user already cancelled during post-processing.
+    useDownloadStore.setState({
+      queue: [{ ...makeItem("cancel-me"), status: "cancelled" }],
+    });
+
+    emit("result", {
+      type: "result",
+      id: "cancel-me",
+      success: true,
+      title: "LateFinisher",
+      filepath: "C:/dl/late.mp3",
+      fmt: "mp3",
+    });
+
+    const s = useDownloadStore.getState();
+    expect(s.queue[0]?.status).toBe("cancelled");
+    expect(s.queue[0]?.filepath).toBe("C:/dl/late.mp3");
+    expect(
+      s.logs.some((l) => l.level === "warn" && l.message.includes("after cancel"))
+    ).toBe(true);
+
+    // A NON-cancelled item still completes normally — which in this app means
+    // moving to history (addHistoryItem removes the row from the queue).
+    useDownloadStore.setState({ queue: [{ ...makeItem("normal"), status: "downloading" }] });
+    emit("result", { type: "result", id: "normal", success: true, title: "Normal", filepath: "C:/dl/n.mp3", fmt: "mp3" });
+    expect(useDownloadStore.getState().queue.some((q) => q.id === "normal")).toBe(false);
+    expect(useDownloadStore.getState().history.some((h) => h.id === "normal")).toBe(true);
+  });
 });
 
 describe("useEngineEvents — WS connection-state indicator", () => {

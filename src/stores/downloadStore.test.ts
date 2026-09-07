@@ -117,4 +117,47 @@ describe("downloadStore", () => {
     expect(invoke).toHaveBeenCalledWith("restart_engine");
     expect(useDownloadStore.getState().engineStatus).toBe("starting");
   });
+
+  it("restoreActiveJobs rebuilds the queue from active jobs (F-02)", async () => {
+    invoke.mockResolvedValueOnce([
+      { id: "rj1", status: "downloading", url: "https://youtu.be/aaaa", fmt: "opus", quality: "high", mode: "audio" },
+      { id: "rj2", status: "queued", url: "https://youtu.be/bbbb", fmt: "mp4", quality: "1080p", mode: "video" },
+    ]);
+    await useDownloadStore.getState().restoreActiveJobs();
+    const s = useDownloadStore.getState();
+    expect(s.queue.length).toBe(2);
+    expect(s.queue[0]!.id).toBe("rj1");
+    expect(s.queue[0]!.status).toBe("downloading");
+    expect(s.queue[0]!.format).toBe("opus");
+    expect(s.queue[0]!.type).toBe("audio");
+    expect(s.queue[1]!.status).toBe("queued");
+    expect(s.queue[1]!.type).toBe("video");
+  });
+
+  it("restoreActiveJobs is idempotent — never duplicates existing ids (F-02)", async () => {
+    useDownloadStore.setState({
+      queue: [{ id: "rj1", url: "u", title: "t", format: "mp3", quality: "high", status: "downloading", progress: 0, downloaded: 0, total: 0, speed: 0, type: "audio" }],
+    });
+    invoke.mockResolvedValueOnce([{ id: "rj1", status: "downloading", url: "u", fmt: "mp3", quality: "high", mode: "audio" }]);
+    await useDownloadStore.getState().restoreActiveJobs();
+    expect(useDownloadStore.getState().queue.length).toBe(1);
+  });
+
+  it("probeUrl sets probeInFlight and the 60s watchdog clears it (F-11)", async () => {
+    vi.useFakeTimers();
+    invoke.mockResolvedValueOnce({});
+    const p = useDownloadStore.getState().probeUrl("https://youtu.be/aaaa");
+    await p;
+    expect(useDownloadStore.getState().probeInFlight).toBe(true);
+    vi.advanceTimersByTime(61_000);
+    expect(useDownloadStore.getState().probeInFlight).toBe(false);
+    expect(useDownloadStore.getState().probeError).toContain("timed out");
+    vi.useRealTimers();
+  });
+
+  it("probeUrl clears probeInFlight on REST failure (F-11)", async () => {
+    invoke.mockRejectedValueOnce(new Error("down"));
+    await useDownloadStore.getState().probeUrl("https://youtu.be/aaaa");
+    expect(useDownloadStore.getState().probeInFlight).toBe(false);
+  });
 });

@@ -123,6 +123,8 @@ export function useEngineEvents() {
               });
               addLog(`Probe success: ${String(info.title ?? "unknown")}`);
               setStatusMessage("Probe complete.");
+              // F-11: the spinner is bound to the real probe lifecycle.
+              useDownloadStore.setState({ probeInFlight: false });
             }
             return;
           }
@@ -183,10 +185,35 @@ export function useEngineEvents() {
             if (filepath && !isAbsolute && downloadBaseRef.current) {
               filepath = downloadBaseRef.current + "/" + filepath.replace(/\\/g, "/");
             }
+            // F-03: mirror the P1-13 progress guard. A cancel that landed
+            // during ffmpeg post-processing (no progress hooks fire there) is
+            // acked by the engine, but the engine may still finish and emit a
+            // late result. Respect the user's terminal decision: keep
+            // "cancelled", log the file outcome, and record the path so the
+            // file is still reachable from the row.
+            const current = useDownloadStore.getState().queue.find((qi) => qi.id === id);
+            if (current && current.status === "cancelled") {
+              addLog(
+                `Download ${success ? "completed" : "failed"} after cancel: ${id}` +
+                  (success ? " — file kept on disk" : ""),
+                "warn"
+              );
+              if (success && filepath) {
+                updateQueueItem(id, {
+                  filepath,
+                  ...(payload.title ? { title: String(payload.title) } : {}),
+                });
+              }
+              return;
+            }
             updateQueueItem(id, {
               status: success ? ("completed" as const) : ("failed" as const),
               filepath,
-              message: success ? "Completed" : String(payload.error ?? "Failed"),
+              // IMP-07/11: engine-attached honesty notes (duplicate-title
+              // skip, no-FFmpeg progressive fallback) ride the result event.
+              message: success
+                ? `Completed${payload.warnings ? ` — ${String(payload.warnings)}` : ""}`
+                : String(payload.error ?? "Failed"),
               progress: success ? 1 : 0,
               // P1-10: only spread `title` when the payload carries one — an
               // explicit `title: undefined` key overwrote the existing title
@@ -255,7 +282,8 @@ export function useEngineEvents() {
               // small grey status strip — the red "Probe failed" alert with
               // its Retry button existed solely on the REST path. Surface
               // them identically so both paths behave the same.
-              useDownloadStore.setState({ probeError: errMsg });
+              // F-11: also release the probe spinner.
+              useDownloadStore.setState({ probeError: errMsg, probeInFlight: false });
               addToast(`Probe failed: ${errMsg}`, "error");
               setStatusMessage("Probe failed.");
             } else {

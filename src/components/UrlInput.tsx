@@ -35,8 +35,11 @@ const videoQualities = [
 
 export function UrlInput() {
   const [url, setUrl] = useState("");
-  const [probing, setProbing] = useState(false);
   const [adding, setAdding] = useState(false);
+  // F-11: the probe REST ack returns instantly while the real result arrives
+  // over WS seconds later — a local boolean stopped the spinner at the ack.
+  // Bind it to the store flag that tracks the actual probe lifecycle instead.
+  const probing = useDownloadStore((state) => state.probeInFlight);
   const probeInfo = useDownloadStore((state) => state.probeInfo);
   const probeError = useDownloadStore((state) => state.probeError);
   const statusMessage = useDownloadStore((state) => state.statusMessage);
@@ -60,12 +63,7 @@ export function UrlInput() {
 
   const handleProbe = async () => {
     if (!isValid || probing) return;
-    setProbing(true);
-    try {
-      await probeUrl(url.trim());
-    } finally {
-      setProbing(false);
-    }
+    await probeUrl(url.trim());
   };
 
   const handleAdd = async () => {

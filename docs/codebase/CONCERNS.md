@@ -61,6 +61,60 @@
 - Backend has no automated test for the `server.mjs` end-to-end error-middleware wiring beyond
   the live smoke test (static/history routes are covered).
 
+## Round 3 findings (evidence-based sweep at `b0c2ce2`) — FIXED
+
+1. **F-01 History was client-persisted only** — a closed/refreshed tab mid-download
+   meant the engine finished the file but no history record was ever written.
+   **FIXED**: `web/services/historyPersistence.mjs` subscribes to successful `result`
+   events server-side; dedupe converges with client saves by id
+   (`web/tests/serverHistory.test.mjs`).
+2. **F-02 Page refresh lost in-flight queue items** — `get_active_jobs` was only
+   consumed on WS *reconnect*, never at mount. **FIXED**: the engine's jobs snapshot
+   now carries `url/fmt/quality/mode`; `restoreActiveJobs()` rebuilds the queue on
+   mount (`src/App.tsx`); idempotent against duplicates.
+3. **F-03 Late `result` resurrected cancelled items** — cancel during ffmpeg
+   post-processing was silently un-done. **FIXED**: the `result` handler mirrors the
+   P1-13 progress guard (keeps `cancelled`, logs the outcome, records `filepath`).
+4. **F-04 `music.youtube.com` and `/live/` URLs were rejected**. **FIXED**: both
+   regex copies (validate.mjs ⇄ urlRegex.ts) accept `music.` subdomain + `/live/`;
+   `extractVideoId` covers `/live/`; parity fixtures pinned.
+5. **F-05 LogPanel auto-scroll fought the user** (newest-first list yanked to top
+   ~4×/s during downloads). **FIXED**: pinned-at-top model (`pinnedRef`, 24px
+   threshold); scrolling away unpins, returning re-pins.
+6. **F-06 `recover()` silently discarded pending commands** (fatal path emitted
+   terminal errors; manual restart didn't). **FIXED**: parity — every discarded
+   pending command gets a terminal `error` (`error_type: "EngineRestarted"`).
+7. **F-07/F-08 Duplicate-title collisions were silent + stale cache** — same-title
+   videos bound the wrong file; re-downloads reported fresh success on skipped
+   files; `/downloads` served hour-cached copies. **FIXED (honesty path)**:
+   explicit `overwrites: False`, skip detection → `result.warnings`
+   ("file already existed — not re-downloaded"); `/downloads` now `maxAge: 0` +
+   etag/Last-Modified revalidation.
+8. **F-09 Docs/config contradictions** — README license vs MIT; `engines` floor vs
+   CI reality. **FIXED**: README says MIT; root `engines: >=18` + `devEngines: >=24`.
+9. **F-10 Trim feature was unreachable** — `trim_start`/`trim_end` parsed in the
+   engine but never forwarded. **FIXED**: validated end-to-end (Node `parseTimestamp`
+   mirror → route 400s → engine constructor).
+10. **F-11 Probe spinner lied + unbounded retry** — spinner stopped at REST ack;
+    worst case minutes of silence. **FIXED**: store `probeInFlight` bound to the WS
+    lifecycle with a 60 s watchdog; engine probe opts tightened (15 s socket,
+    retries 3, extractor 2) with a 60 s deadline between outer attempts.
+11. **F-12 `verify_format` MKV/WebM passed any parseable container**. **FIXED**:
+    requires `matroska` in ffprobe's `format_name`.
+12. **F-13 No-FFmpeg video silently degraded to ≤720p**. **FIXED**: warns in the
+    engine log AND appends a `warnings` note to the result.
+13. **F-14 Cancel failure feedback** — verified the premise was stale (the store
+    awaits REST confirmation before flipping), so no revert was needed; added an
+    error toast on failed cancels.
+14. **F-15 `download_started` before executor pickup** — resolved by IMP-02's
+    status-driven restore (`Queued (engine)` / `queued` rows stay honest).
+15. **F-16 CSP `connect-src ws:` allowed any WebSocket server**. **FIXED**:
+    `ws://127.0.0.1:* ws://localhost:* wss://localhost:*` only.
+16. **F-17 `__init__` mutated process-global `os.environ`** (5 constructors racing).
+    **FIXED**: PATH prepend dropped; `FFMPEG_PATH` via guarded `setdefault`.
+17. **F-18 Route header comment** said `POST /api/cancel`. **FIXED**:
+    `POST /api/download/cancel`.
+
 ## Runtime notes
 - Downloads → `downloads/` (gitignored); history → `web/data/history.json` (gitignored,
   100-record cap, atomic temp-file+rename writes); logs rotate at 5 MB × 3 backups.

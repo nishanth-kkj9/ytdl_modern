@@ -148,8 +148,12 @@ curl -X POST http://127.0.0.1:3000/api/download \
 | `format` | `"mp3"` | Audio: `mp3`, `opus`, `m4a`, `aac`, `wav` — Video: `mp4`, `webm`, `mkv` |
 | `quality` | `"high"` | Audio: `maximum`, `high`, `medium`, `low` — Video: `maximum`, `best`, `2160p`, `1080p`, `720p`, `480p`, `360p`, `high`, `medium`, `low` |
 | `id` | auto-generated | Client-side ID for tracking |
+| `trim_start` / `trim_end` | — | Optional trim window (seconds or `HH:MM:SS` / `MM:SS`). Requires FFmpeg; `trim_end` must be greater than `trim_start`. |
 
 Optional metadata fields: `title`, `uploader`, `thumbnail`, `duration`, `webpage_url`.
+
+Accepted URLs: `youtube.com/watch`, `youtu.be`, `/shorts/`, `/embed/`, `/v/`,
+`/live/`, and `music.youtube.com/watch` (mobile `m.` subdomain included).
 
 ### WebSocket
 
@@ -161,7 +165,7 @@ Connect to `ws://127.0.0.1:3000/ws` for live events (server-to-client only):
 | `probe_result` | `{ id, success, info }` | Metadata from a probe request |
 | `download_started` | `{ id, url, fmt, quality }` | Download acknowledged by engine |
 | `progress` | `{ id, status, downloaded, total, speed }` | Download progress |
-| `result` | `{ id, success, title, filepath, ... }` | Download completed or failed |
+| `result` | `{ id, success, title, filepath, warnings, ... }` | Download completed or failed; `warnings` carries honest notes (duplicate-title skip, no-FFmpeg progressive fallback) |
 | `cancelled` | `{ id }` | Download cancelled |
 | `error` | `{ id, error_type, error }` | Per-request error |
 | `fatal_error` | `{ error }` | Engine crashed, cannot recover |
@@ -264,4 +268,4 @@ ytdl_modern/
 
 ## License
 
-Private project. All rights reserved.
+MIT — see [LICENSE](LICENSE).

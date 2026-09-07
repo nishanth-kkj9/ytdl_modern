@@ -1,0 +1,217 @@
+"""Round-3 pin tests: F-02 jobs-snapshot enrichment, F-10 trim wiring through
+the IPC layer, F-12 verify_format honesty for mkv/webm, F-13 no-FFmpeg video
+warning, F-17 environ-mutation guard.
+
+Each mirrors a defect from the round-3 audit that had no test.
+"""
+import io
+import json
+import os
+import sys
+import threading
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest  # noqa: E402
+
+import ipc_main  # noqa: E402
+from engine import AudioDownloadEngine, verify_format  # noqa: E402
+
+
+def _dispatch(command: dict) -> list:
+    """Run a command through the IPC layer and return all NDJSON replies."""
+    buf = io.StringIO()
+    original = ipc_main._ORIGINAL_STDOUT
+    ipc_main._ORIGINAL_STDOUT = buf
+    try:
+        ipc_main._handle_command(command)
+    finally:
+        ipc_main._ORIGINAL_STDOUT = original
+    return [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+
+
+def test_jobs_snapshot_carries_upstream_fields_after_registration():
+    """F-02: the jobs reply must carry url/fmt/quality/mode so a refreshed
+    browser can rebuild a row from /api/status."""
+    import ipc_main as m
+
+    with m._LOCK:
+        m._DOWNLOAD_JOBS["job-1"] = {
+            "cancel_event": threading.Event(),
+            "status": "queued",
+            "url": "https://youtu.be/aaaa",
+            "fmt": "mp3",
+            "quality": "high",
+            "mode": "audio",
+        }
+    try:
+        msg = _dispatch({"cmd": "jobs", "request_id": "r-f02"})
+    finally:
+        with m._LOCK:
+            m._DOWNLOAD_JOBS.pop("job-1", None)
+    assert msg[0]["type"] == "jobs_result"
+    assert msg[0]["request_id"] == "r-f02"
+    entry = msg[0]["jobs"][0]
+    assert entry["id"] == "job-1"
+    assert entry["url"] == "https://youtu.be/aaaa"
+    assert entry["fmt"] == "mp3"
+    assert entry["quality"] == "high"
+    assert entry["mode"] == "audio"
+
+
+def _dispatch(command: dict) -> list:
+    """Run a command through the IPC layer and return all NDJSON replies."""
+    buf = io.StringIO()
+    original = ipc_main._ORIGINAL_STDOUT
+    ipc_main._ORIGINAL_STDOUT = buf
+    try:
+        ipc_main._handle_command(command)
+    finally:
+        ipc_main._ORIGINAL_STDOUT = original
+    return [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+
+
+def test_download_command_forwards_trim_fields_to_engine(monkeypatch):
+    """F-10: a download command carrying trim_start/trim_end must thread them
+    into the AudioDownloadEngine constructor (the engine already implements
+    _trim but ipc_main never passed the args — the feature was unreachable)."""
+    import ipc_main as m
+
+    captured = {}
+
+    def fake_engine(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(m, "AudioDownloadEngine", fake_engine)
+    with m._LOCK:
+        m._DOWNLOAD_JOBS.clear()
+    _dispatch({
+        "cmd": "download",
+        "id": "dl-trim",
+        "url": "https://youtu.be/cccc",
+        "format": "mp3",
+        "quality": "high",
+        "mode": "audio",
+        # Empty output_dir resolves to the allowed project downloads dir.
+        "output_dir": "",
+        "trim_start": 30,
+        "trim_end": 90,
+    })
+    assert captured.get("trim_start") == 30
+    assert captured.get("trim_end") == 90
+
+
+def test_verify_format_requires_matroska_for_mkv(monkeypatch, tmp_path):
+    """F-12: a mislabeled .mkv that is actually MP4 must NOT pass verification —
+    the old 'ok = bool(fmt_name)' passed any parseable container."""
+    import engine as eng
+    from unittest.mock import patch
+
+    # The file must exist (verify_format early-returns on missing files).
+    target = tmp_path / "fake.mkv"
+    target.write_bytes(b"\x00\x01\x02")  # garbage — mutagen returns None, ffprobe path
+
+    # Force the ffprobe branch: mutagen returns None for .mkv AND shutil.which
+    # must find an ffprobe (on this machine it may not be installed).
+    monkeypatch.setattr(eng.shutil, "which", lambda name: "/fake/ffprobe" if name == "ffprobe" else None)
+    fake_json = json.dumps({"format": {"format_name": "mov,mp4"}})
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 0
+            stdout = fake_json.encode()
+            stderr = b""
+        return R()
+
+    with patch("engine.subprocess.run", side_effect=fake_run):
+        ok, name, _ = verify_format(str(target), "mkv")
+    assert ok is False, "a non-Matroska file must not pass mkv verification"
+    assert name == "mov,mp4"
+
+
+def test_verify_format_accepts_matroska_webm(monkeypatch, tmp_path):
+    import engine as eng
+    from unittest.mock import patch
+
+    target = tmp_path / "fake.webm"
+    target.write_bytes(b"\x00\x01\x02")
+
+    monkeypatch.setattr(eng.shutil, "which", lambda name: "/fake/ffprobe" if name == "ffprobe" else None)
+    fake_json = json.dumps({"format": {"format_name": "matroska,webm"}})
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 0
+            stdout = fake_json.encode()
+            stderr = b""
+        return R()
+
+    with patch("engine.subprocess.run", side_effect=fake_run):
+        ok, name, _ = verify_format(str(target), "webm")
+    assert ok is True
+    assert "matroska" in name
+
+
+def test_no_ffmpeg_video_warns_and_sets_flag(monkeypatch):
+    """F-13: video mode without FFmpeg must warn AND set the result warning —
+    silently degrading to progressive <=720p was confusing."""
+    import engine as eng
+    from unittest.mock import patch, MagicMock
+
+    warnings = []
+    monkeypatch.setattr(eng.applog, "warn", lambda msg: warnings.append(msg))
+
+    eng_inst = AudioDownloadEngine(
+        output_dir=os.path.join(os.path.sep, "tmp"),
+        mode="video",
+        audio_format="mp4",
+        quality="1080p",
+    )
+
+    captured_opts = {}
+    mock_ydl = MagicMock()
+    mock_ydl.extract_info.side_effect = RuntimeError("boom")
+    mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+    mock_ydl.__exit__ = MagicMock(return_value=False)
+
+    def capture_opts(opts, *a, **kw):
+        captured_opts.update(opts)
+        return mock_ydl
+
+    with patch("engine.YoutubeDL", side_effect=capture_opts):
+        with pytest.raises(RuntimeError):
+            eng_inst._download_once("https://youtu.be/aaaa", None)
+
+    # The flag is only meaningful when ffmpeg is absent; when it is present,
+    # the warning must NOT have fired (we don't falsely warn).
+    if eng_inst._ffmpeg_bin is None:
+        assert getattr(eng_inst, "_no_ffmpeg_video", False) is True
+        assert any("FFmpeg not found" in w for w in warnings), warnings
+    else:
+        assert not any("FFmpeg not found" in w for w in warnings)
+
+
+def test_environ_not_prepended_when_ffmpeg_on_path(monkeypatch):
+    """F-17: constructing an engine must not mutate process-global PATH — the
+    PATH/FFMPEG_PATH prepend was racy across 5 concurrent constructors."""
+    import os as _os
+
+    before_path = _os.environ.get("PATH", "")
+    before_ffmpeg = _os.environ.get("FFMPEG_PATH", None)
+    try:
+        AudioDownloadEngine(
+            output_dir=os.path.join(os.path.sep, "tmp"),
+            mode="audio", audio_format="mp3", quality="high",
+        )
+    except Exception:
+        pass  # environment may lack ffmpeg; the assertion below is the point
+    assert _os.environ.get("PATH", "") == before_path, (
+        "PATH must not be mutated by engine construction"
+    )
+    if before_ffmpeg is None:
+        # setdefault: if an absolute ffmpeg was found it MAY set FFMPEG_PATH,
+        # but it must never have already existed and been overwritten.
+        assert _os.environ.get("FFMPEG_PATH") is None or _os.path.isabs(
+            _os.environ["FFMPEG_PATH"]
+        )

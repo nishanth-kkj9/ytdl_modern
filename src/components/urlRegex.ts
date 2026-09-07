@@ -3,7 +3,7 @@
 // rejects non-YouTube URLs with a 400 regardless of what this copy allows).
 // src/urlRegex.test.ts pins both patterns to the same fixture set — update
 // both together when adding support for new URL shapes.
-export const YOUTUBE_REGEX = /^(?:https?:\/\/)?(?:(?:www|m)\.)?(?:youtube\.com\/(?:watch\?.*v=|shorts\/|embed\/|v\/)|youtu\.be\/)[\w-]{11}(?![\w-])(?:[?&#/].*)?$/i;
+export const YOUTUBE_REGEX = /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com\/(?:watch\?.*v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)[\w-]{11}(?![\w-])(?:[?&#/].*)?$/i;
 
 /**
  * Extract the 11-character video id from a validated YouTube URL. Used to
@@ -13,7 +13,7 @@ export const YOUTUBE_REGEX = /^(?:https?:\/\/)?(?:(?:www|m)\.)?(?:youtube\.com\/
  * video ids instead keeps short-link users from silently losing probe
  * metadata (P1-11). Returns null for non-matching input.
  */
-const VIDEO_ID_RE = /(?:watch\?.*v=|shorts\/|embed\/|v\/|youtu\.be\/)([\w-]{11})/i;
+const VIDEO_ID_RE = /(?:watch\?.*v=|shorts\/|embed\/|live\/|v\/|youtu\.be\/)([\w-]{11})/i;
 export function extractVideoId(url: string): string | null {
   return VIDEO_ID_RE.exec(url.trim())?.[1] ?? null;
 }

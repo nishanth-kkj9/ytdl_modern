@@ -145,7 +145,7 @@ def _probe(url: str, id_: str) -> None:
         _write_error(id_, "ProbeError", f"{type(exc).__name__}: {exc}")
 
 
-def _run_download(id_: str, url: str, audio_format: str, quality: str, output_dir: str, mode: str, cancel_event: threading.Event) -> None:
+def _run_download(id_: str, url: str, audio_format: str, quality: str, output_dir: str, mode: str, cancel_event: threading.Event, trim_start: float | None = None, trim_end: float | None = None) -> None:
     # Flip the job's status to "running" once the executor picks it up, so the
     # `jobs` snapshot distinguishes queued-but-not-started from active work.
     with _LOCK:
@@ -177,6 +177,8 @@ def _run_download(id_: str, url: str, audio_format: str, quality: str, output_di
             cancel_event=cancel_event,
             embed_metadata=True,
             cover_art=True,
+            trim_start=trim_start,
+            trim_end=trim_end,
         )
         result = engine.download(url, retry_cb=retry_cb)
 
@@ -214,6 +216,18 @@ def _resolve_output_dir(output_dir: str) -> str | None:
     return resolved
 
 
+def _opt_float(command: dict[str, Any], key: str) -> float | None:
+    """Read an optional float field; invalid/missing → None (F-10)."""
+    raw = command.get(key)
+    if raw is None or raw == "":
+        return None
+    try:
+        val = float(raw)
+        return val if 0 <= val < 86400 * 7 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _start_download(command: dict[str, Any]) -> None:
     id_ = str(command.get("id", "")).strip()
     url = str(command.get("url", "")).strip()
@@ -221,6 +235,15 @@ def _start_download(command: dict[str, Any]) -> None:
     quality = str(command.get("quality", "high")).strip() or "high"
     output_dir = str(command.get("output_dir", "")).strip()
     mode = str(command.get("mode", "audio")).strip() or "audio"
+    # F-10: optional trim window — CLI-side mirror of the Node parseTimestamp
+    # gate; identically bounded (0 .. 7 days).
+    trim_start = _opt_float(command, "trim_start")
+    trim_end = _opt_float(command, "trim_end")
+    if trim_start is not None and trim_end is not None and trim_end <= trim_start:
+        with _LOCK:
+            _DOWNLOAD_JOBS.pop(id_, None)
+        _write_error(id_, "InvalidCommand", "trim_end must be greater than trim_start")
+        return
 
     if not id_ or not url:
         _write_error(id_, "InvalidCommand", "download command requires 'id' and 'url'")
@@ -236,7 +259,17 @@ def _start_download(command: dict[str, Any]) -> None:
         if id_ in _DOWNLOAD_JOBS:
             _write_error(id_, "DuplicateId", f"Download id '{id_}' is already active")
             return
-        _DOWNLOAD_JOBS[id_] = {"cancel_event": cancel_event, "status": "queued"}
+        _DOWNLOAD_JOBS[id_] = {
+            "cancel_event": cancel_event,
+            "status": "queued",
+            # Enriched for browser queue-restore (F-02): a page refresh empties
+            # the client queue while the engine keeps working; the /api/status
+            # jobs snapshot is the only place the surviving state exists.
+            "url": url,
+            "fmt": audio_format,
+            "quality": quality,
+            "mode": mode,
+        }
 
     resolved_output = _resolve_output_dir(output_dir)
     if resolved_output is None:
@@ -261,7 +294,7 @@ def _start_download(command: dict[str, Any]) -> None:
         "fmt": audio_format,
         "quality": quality,
     })
-    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode, cancel_event)
+    _EXECUTOR.submit(_run_download, id_, url, audio_format, quality, output_dir, mode, cancel_event, trim_start, trim_end)
 
 
 def _cancel(command: dict[str, Any]) -> None:
@@ -304,7 +337,16 @@ def _handle_command(command: dict[str, Any]) -> None:
         request_id = str(command.get("request_id", "")).strip()
         with _LOCK:
             jobs = [
-                {"id": jid, "status": job.get("status", "queued")}
+                {
+                    "id": jid,
+                    "status": job.get("status", "queued"),
+                    # F-02: surface what the UI needs to rebuild a row after a
+                    # page refresh (titles arrive only after extraction).
+                    "url": job.get("url", ""),
+                    "fmt": job.get("fmt", ""),
+                    "quality": job.get("quality", ""),
+                    "mode": job.get("mode", ""),
+                }
                 for jid, job in _DOWNLOAD_JOBS.items()
             ]
         _write_message({

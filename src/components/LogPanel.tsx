@@ -81,8 +81,25 @@ export function LogPanel() {
 
   // Logs are stored newest-first (prepended), so the newest entry is at the
   // top of the scroll container — scroll to 0, not scrollHeight.
+  // F-05: auto-scroll ONLY while the user is AT the top. The old code forced
+  // scrollTop=0 on every logs change, yanking the viewport back whenever the
+  // user scrolled down to read older entries — during downloads a progress
+  // event arrives ~4x/s, making the panel effectively unreadable. Pinned =
+  // within 24px of top; a manual scroll away unpins; returning re-pins.
+  const pinnedRef = useRef(true);
+
   useEffect(() => {
-    if (open && panelRef.current) {
+    const el = panelRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      pinnedRef.current = el.scrollTop <= 24;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (open && pinnedRef.current && panelRef.current) {
       panelRef.current.scrollTop = 0;
     }
   }, [logs, open]);

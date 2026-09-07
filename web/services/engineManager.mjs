@@ -95,7 +95,19 @@ export class EngineManager {
     this.fatalError = false;
     this.restartAttempts = 0;
     this.ready = false;
+    // F-06: parity with maybeRestart()'s fatal path — every discarded pending
+    // command gets a terminal error so its browser row resolves instead of
+    // hanging on an id the new engine will never see again.
+    const pending = this.pendingCommands;
     this.pendingCommands = [];
+    for (const cmd of pending) {
+      this.bus.emit("error", {
+        type: "error",
+        id: cmd.id || "",
+        error_type: "EngineRestarted",
+        error: "Engine was restarted before this command ran — please retry.",
+      });
+    }
     this._failPendingJobRequests();
     this.spawn();
     return true;

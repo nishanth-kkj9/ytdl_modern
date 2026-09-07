@@ -40,6 +40,8 @@ interface DownloadState {
   history: HistoryItem[];
   probeInfo: ProbeInfo | null;
   probeError: string | null;
+  /** True from probeUrl() until the WS probe_result/error arrives (F-11). */
+  probeInFlight: boolean;
   engineStatus: EngineStatus;
   selectedMode: "audio" | "video";
   selectedFormat: string;
@@ -73,6 +75,8 @@ interface DownloadState {
   addHistoryItem: (record: HistoryItem) => void;
   loadHistory: () => Promise<void>;
   clearHistory: () => Promise<void>;
+  /** F-02: rebuild the queue from /api/status activeJobs after a refresh. */
+  restoreActiveJobs: () => Promise<void>;
   /** Push a toast notification. Returns the toast id for programmatic dismissal. */
   addToast: (message: string, type?: ToastType, duration?: number) => string;
   /** Remove a toast by id. */
@@ -86,6 +90,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   history: [],
   probeInfo: null,
   probeError: null,
+  probeInFlight: false,
   engineStatus: "starting",
   selectedMode: "audio",
   selectedFormat: "mp3",
@@ -181,6 +186,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     } catch (error) {
       get().addLog(`cancel_download error: ${String(error)}`, "error");
       set({ statusMessage: "Failed to cancel download." });
+      get().addToast("Cancel failed — try again in a moment", "error");
     }
   },
 
@@ -214,14 +220,28 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 
   probeUrl: async (url) => {
-    set({ statusMessage: "Probing URL...", probeInfo: null, probeError: null });
+    set({ statusMessage: "Probing URL...", probeInfo: null, probeError: null, probeInFlight: true });
     try {
       await invoke("probe_url", { url });
       get().addLog(`Probe requested: ${url}`);
     } catch (error) {
-      set({ statusMessage: "Probe failed.", probeError: String(error) });
+      set({ statusMessage: "Probe failed.", probeError: String(error), probeInFlight: false });
       get().addLog(`probe_url error: ${String(error)}`, "error");
+      return;
     }
+    // F-11: the REST ack returns immediately; the RESULT arrives over WS.
+    // Bind the spinner to the actual probe lifecycle (cleared by the WS
+    // handlers in useEngineEvents), and never let a lost event leave it
+    // spinning forever — a 60 s watchdog clears it with an honest message.
+    setTimeout(() => {
+      if (useDownloadStore.getState().probeInFlight) {
+        useDownloadStore.setState({
+          probeInFlight: false,
+          probeError: "Probe timed out (60s). Check the engine log and retry.",
+          statusMessage: "Probe timed out.",
+        });
+      }
+    }, 60_000);
   },
 
   setSelectedMode: (mode) => set({
@@ -297,6 +317,50 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       console.error("Failed to clear history:", e);
       get().addLog(`Failed to clear history: ${String(e)}`, "warn");
       set({ statusMessage: "Failed to clear history." });
+    }
+  },
+
+  // F-02: a page refresh empties the client queue while the engine keeps
+  // working — /api/status's jobs snapshot is the only place the surviving
+  // state exists. Restore one row per active job; progress resumes on the
+  // next WS `progress` event (events target the id; updateQueueItem matches
+  // by id). Restores are idempotent: existing ids are never duplicated.
+  restoreActiveJobs: async () => {
+    try {
+      const jobs = await invoke<
+        { id: string; status: string; url?: string; fmt?: string; quality?: string; mode?: string }[]
+      >("get_active_jobs");
+      const state = get();
+      for (const j of jobs ?? []) {
+        if (!j?.id) continue;
+        if (state.queue.some((q) => q.id === j.id)) continue;
+        const queued = j.status === "queued";
+        set((s) => ({
+          queue: [
+            ...s.queue,
+            {
+              id: j.id,
+              url: String(j.url ?? ""),
+              // Titles aren't known until extraction completes server-side;
+              // the URL is the same honest placeholder enqueueDownload uses
+              // before probe metadata arrives.
+              title: String(j.url ?? "Restored download"),
+              format: String(j.fmt ?? "mp3"),
+              quality: String(j.quality ?? "high"),
+              status: queued ? ("queued" as const) : ("downloading" as const),
+              progress: 0,
+              downloaded: 0,
+              total: 0,
+              speed: 0,
+              type: j.mode === "video" ? ("video" as const) : ("audio" as const),
+              message: queued ? "Queued (restored)" : "Downloading (restored)",
+            },
+          ],
+        }));
+      }
+    } catch {
+      // Status endpoint unavailable at mount — the empty queue is honest;
+      // the reconnect reconciler still handles later drift.
     }
   },
 

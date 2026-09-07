@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import http from "node:http";
 import express from "express";
-import { sanitizeHistoryRecord } from "../validate.mjs";
+import { sanitizeHistoryRecord, parseTimestamp } from "../validate.mjs";
 import { historyRouter } from "../routes/history.mjs";
 import { restartRouter } from "../routes/restart.mjs";
 
@@ -154,5 +154,29 @@ function request(app, method, path, body) {
   assert.strictEqual(recovered, 1, "recover() should be invoked once");
   console.log("✓ restart route: calls recover()");
 }
+
+// ── parseTimestamp (F-10) ────────────────────────────────────────────────────
+// Mirrors python engine.parse_timestamp accepted shapes. Shared fixture parity
+// with test_round2_pins.py.
+
+const ACCEPT_TS = [
+  ["0", 0],
+  ["5", 5],
+  ["10.5", 10.5],
+  ["0:30", 30],
+  ["1:00", 60],
+  ["1:02.5", 62.5],
+  ["1:02:03", 3723],
+  ["0:0:0", 0],
+];
+const REJECT_TS = ["", " ", "abc", "12:34:56:78", "-5", "1:2:3:4"];
+
+for (const [input, expected] of ACCEPT_TS) {
+  assert.strictEqual(parseTimestamp(input), expected, `parseTimestamp(${JSON.stringify(input)})`);
+}
+for (const input of REJECT_TS) {
+  assert.strictEqual(parseTimestamp(input), null, `parseTimestamp(${JSON.stringify(input)}) should be null`);
+}
+console.log("✓ parseTimestamp: accepted/rejected shapes match the engine");
 
 console.log("All validate/restart tests passed.");

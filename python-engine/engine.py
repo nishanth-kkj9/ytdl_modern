@@ -228,6 +228,9 @@ class DownloadResult:
     metadata_engine:  str   = ""
     metadata_container: str = ""
     metadata_cover_art: bool = False
+    # F-07/11: honest human-readable notes appended to the result message
+    # ("file already existed — not re-downloaded", "no FFmpeg — progressive").
+    warnings:         str   = "" 
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1191,7 +1194,10 @@ def verify_format(filepath: str, expected_fmt: str) -> tuple[bool, str, int]:
                             j = _j.loads(r.stdout.decode(errors="replace"))
                             fmt_name = j.get("format", {}).get("format_name", "")
                             # ffprobe reports matroska for mkv/webm, mov for mp4/m4a
-                            ok = bool(fmt_name)
+                            # F-12: "ok = bool(fmt_name)" passed ANY parseable
+                            # container — a mislabeled .mkv passed. Require the
+                            # container to actually be Matroska.
+                            ok = "matroska" in fmt_name
                             return ok, fmt_name or "unknown", 0
                     except Exception:
                         pass
@@ -1311,9 +1317,13 @@ class AudioDownloadEngine:
         ff_result = self._find_ffmpeg()
         if ff_result:
             self._ffmpeg_dir, self._ffmpeg_bin, self._ffprobe_bin = ff_result
-            if self._ffmpeg_dir and self._ffmpeg_dir not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = self._ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-                os.environ["FFMPEG_PATH"] = self._ffmpeg_dir
+            # F-17: yt-dlp already receives ffmpeg_location per-instance; the
+            # PATH prepend only mattered for SUBPROCESS ffmpeg/ffprobe calls,
+            # which use absolute paths anyway. Stop mutating process-global
+            # os.environ (5 concurrent constructors used to race on it); keep
+            # a guarded setdefault so an absolute ffmpeg is still discoverable.
+            if self._ffmpeg_dir and self._ffmpeg_bin and os.path.isabs(self._ffmpeg_bin):
+                os.environ.setdefault("FFMPEG_PATH", self._ffmpeg_dir)
         self._deno_bin: str | None = None
         deno_result = self._find_deno()
         if deno_result:
@@ -1489,9 +1499,13 @@ class AudioDownloadEngine:
             "no_warnings":   True,
             "noplaylist":    True,
             "skip_download": True,
-            "socket_timeout": 20,
-            "retries":        5,
-            "extractor_retries": 3,
+            # F-11: a probe is interactive — the old inner machinery (20 s
+            # socket, retries 5, extractor 3) times THREE outer attempts meant
+            # minutes of silence before the error surfaced. 15/3/2 keeps the
+            # same resilience shape with a practical ceiling.
+            "socket_timeout": 15,
+            "retries":        3,
+            "extractor_retries": 2,
             "geo_bypass": True,
         }
         if self._deno_bin:
@@ -1501,6 +1515,7 @@ class AudioDownloadEngine:
         # (which carries the NDJSON protocol on stdout... and logs on stderr)
         # without any process-global redirection.
         opts["logger"] = _YdlLogCollector()
+        probe_started = time.monotonic()
         for attempt in range(3):
             try:
                 with YoutubeDL(opts) as ydl:
@@ -1516,6 +1531,11 @@ class AudioDownloadEngine:
             except Exception as exc:
                 last_err = str(exc)
                 applog.warn(f"Probe attempt {attempt + 1} failed: {last_err[:120]}")
+                # F-11: deadline — once 60 s of wall time is spent, report the
+                # last error now instead of looping through the remaining
+                # attempts (the client watchdog fires at 60 s anyway).
+                if time.monotonic() - probe_started > 60:
+                    break
                 if attempt < 2:
                     time.sleep(1.5 * (attempt + 1))
 
@@ -1574,6 +1594,11 @@ class AudioDownloadEngine:
         opts: dict = {
             "outtmpl":   os.path.join(self.output_dir, "%(title)s.%(ext)s"),
             # ── Stability ──────────────────────────────────────────────────────
+            # F-07: an explicit overwrite policy beats yt-dlp's implicit default.
+            # Skipping keeps the first file untouched (no partial overwrite), and
+            # the skip DETECTION below turns "silently reused an old file" into
+            # an honest warning instead of a fake re-download success.
+            "overwrites": False,
             "quiet":              True,
             "no_warnings":        True,
             "noplaylist":         True,
@@ -1660,6 +1685,15 @@ class AudioDownloadEngine:
                 self._progress_cb("finished", 0, 0, 0.0, "")
 
     def _download_once(self, url: str, info: dict | None) -> DownloadResult:
+        # F-13: video without FFmpeg silently degrades to progressive <=720p
+        # even when 1080p/4K was requested — surface the cap in the log.
+        self._no_ffmpeg_video = self.mode == "video" and not self._ffmpeg_bin
+        if self._no_ffmpeg_video:
+            applog.warn(
+                "FFmpeg not found — downloading progressive stream only; "
+                "resolution is capped by YouTube (~720p max) regardless of the "
+                f"requested {self.quality} preset."
+            )
         os.makedirs(self.output_dir, exist_ok=True)
         self._hook_filepath = None
         self._ydl_pre_path  = None
@@ -1825,6 +1859,18 @@ class AudioDownloadEngine:
             elapsed    = self._tracker.elapsed,
         )
 
+        # F-07: yt-dlp skips the transfer when the target already exists
+        # ("has already been downloaded"); report that instead of implying a
+        # fresh fetch. F-13: no-FFmpeg video downloads ride a warning too.
+        warnings: list[str] = []
+        if "has already been downloaded" in (self._last_stderr or ""):
+            warnings.append("file already existed — not re-downloaded")
+        if getattr(self, "_no_ffmpeg_video", False):
+            warnings.append(
+                "downloaded without FFmpeg — progressive stream "
+                "(resolution may be below the requested preset)"
+            )
+
         return DownloadResult(
             success            = True,
             url                = url,
@@ -1838,6 +1884,7 @@ class AudioDownloadEngine:
             video_id           = info.get("id", ""),
             avg_speed          = self._tracker.avg_speed,
             peak_speed         = self._tracker.peak_speed,
+            warnings           = " — ".join(warnings),
             elapsed            = self._tracker.elapsed,
             bitrate            = bitrate,
             thumbnail_ok       = thumb_ok,
