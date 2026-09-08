@@ -267,8 +267,11 @@ def test_duplicate_title_collision_retries_with_id_suffixed_template(monkeypatch
     engine = AudioDownloadEngine(
         output_dir=str(tmp_path), mode="audio", audio_format="mp3", quality="high"
     )
-    # The engine resolved ffmpeg on this machine may be non-None; the flow
-    # under test never invokes it (embed/verify are patched out below).
+    # CI runners have no FFmpeg: _build_opts() raises for audio mode without
+    # it. Fake a resolved ffmpeg so the test exercises the collision flow
+    # (extract is mocked; embed/verify are patched out — ffmpeg is never run).
+    monkeypatch.setattr(engine, "_ffmpeg_bin", "/fake/ffmpeg")
+    monkeypatch.setattr(engine, "_ffmpeg_dir", "/fake")
 
     pre_existing = tmp_path / "Same Title.mp3"
     pre_existing.write_bytes(b"old content")
