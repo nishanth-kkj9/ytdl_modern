@@ -53,7 +53,11 @@ async function main() {
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' https: data:",
         "font-src 'self' data:",
-        "connect-src 'self' ws://127.0.0.1:* ws://localhost:* wss://localhost:*",
+        // F-16/R4: must cover every origin the server itself accepts —
+        // allowedHostsFor() includes [::1], and the ws-origin check (tested)
+        // admits IPv6 loopback, so the CSP has to admit it too or the browser
+        // silently blocks a socket the backend considers legitimate.
+        "connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:* wss://localhost:* wss://[::1]:*",
         "media-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",

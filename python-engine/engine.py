@@ -1241,7 +1241,13 @@ class _YdlLogCollector:
         self.lines: list[str] = []
 
     def debug(self, msg: str) -> None:
-        pass  # yt-dlp debug lines are extremely verbose — skip
+        # Round-4 audit fix (N-02): with a logger installed, yt-dlp routes ALL
+        # to_screen output — including "[download] X has already been
+        # downloaded" — through debug(). Dropping debug wholesale made the
+        # F-07 skip detection read a buffer that could never contain the
+        # marker. Capture ONLY the skip line; everything else stays skipped.
+        if msg and "has already been downloaded" in msg:
+            self.lines.append(msg)
 
     def info(self, msg: str) -> None:
         pass
@@ -1712,6 +1718,9 @@ class AudioDownloadEngine:
 
         expected_height = _HEIGHT_MAP.get(self.quality, 0) if self.mode == "video" else 0
         has_retried = False
+        # N-03: duplicate-title collision handling — see the resolve step in
+        # the loop below. One retry, never deletes or overwrites user files.
+        collision_retried = False
         # Info from the first extraction attempt — kept so that fields absent
         # from a retry client's info dict (mobile clients omit uploader /
         # webpage_url) can be restored before metadata embedding.
@@ -1790,23 +1799,45 @@ class AudioDownloadEngine:
             # re-downloaded the same muxed stream a second time with identical
             # options — a pure waste that doubled every affected download.
 
+            # N-03: resolve INSIDE the loop. A second video whose sanitized
+            # title collides with an existing file must not silently bind (or,
+            # via the postprocessor, overwrite) that file. Detect it by mtime —
+            # the resolved path predates this download's start — and retry once
+            # with an id-suffixed template so each video owns its own file.
+            _merge_missing_info(info, first_info)
+
+            filepath = self._resolve_filepath(info)
+            if not filepath:
+                msg = (
+                    "Output file not found after download.\n"
+                    "Is FFmpeg installed?  sudo apt install ffmpeg\n"
+                    "Or: winget install Gyan.FFmpeg"
+                )
+                if self._last_stderr and self._last_stderr.strip():
+                    msg += f"\n\nCaptured stderr:\n{self._last_stderr[-2000:]}"
+                raise RuntimeError(msg)
+
+            try:
+                reused_preexisting = os.path.getmtime(filepath) < self._download_started
+            except OSError:
+                reused_preexisting = False
+            if reused_preexisting and not collision_retried:
+                applog.warn(
+                    f"Resolved output '{os.path.basename(filepath)}' predates this "
+                    "download — a same-title collision. Retrying once with an "
+                    "id-suffixed template to keep both videos' files distinct."
+                )
+                collision_retried = True
+                opts["outtmpl"] = os.path.join(self.output_dir, "%(title)s [%(id)s].%(ext)s")
+                info = None
+                continue
+            if reused_preexisting:
+                # Id-suffixed path ALSO pre-exists: the same video was already
+                # downloaded before — keep the existing file (idempotent) and
+                # say so honestly instead of implying a fresh fetch.
+                applog.warn(f"Keeping existing file (not re-downloaded): {filepath}")
+
             break
-
-        # Restore fields the retry client's extraction omitted (uploader,
-        # webpage_url, …) from the original extraction so metadata embedding
-        # doesn't silently lose artist/comment tags.
-        _merge_missing_info(info, first_info)
-
-        filepath = self._resolve_filepath(info)
-        if not filepath:
-            msg = (
-                "Output file not found after download.\n"
-                "Is FFmpeg installed?  sudo apt install ffmpeg\n"
-                "Or: winget install Gyan.FFmpeg"
-            )
-            if self._last_stderr and self._last_stderr.strip():
-                msg += f"\n\nCaptured stderr:\n{self._last_stderr[-2000:]}"
-            raise RuntimeError(msg)
 
         file_size = os.path.getsize(filepath)
 

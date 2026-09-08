@@ -192,6 +192,44 @@ def test_no_ffmpeg_video_warns_and_sets_flag(monkeypatch):
         assert not any("FFmpeg not found" in w for w in warnings)
 
 
+def test_write_result_carries_warnings_on_the_wire(monkeypatch):
+    """Round-4 N-01: the dataclass had `warnings` but _write_result omitted it
+    from the NDJSON payload — the browser note and server-side honesty were
+    dead code. The wire contract must carry the field."""
+    from engine import DownloadResult
+
+    result = DownloadResult(success=True, url="u", title="T", warnings="file already existed — not re-downloaded")
+    buf = io.StringIO()
+    monkeypatch.setattr(ipc_main, "_ORIGINAL_STDOUT", buf)
+    ipc_main._write_result("wire-1", result)
+
+    lines = [l for l in buf.getvalue().splitlines() if l.strip()]
+    assert lines, "one NDJSON reply must be emitted"
+    msg = json.loads(lines[0])
+    assert msg["type"] == "result"
+    assert msg["warnings"] == "file already existed — not re-downloaded"
+
+
+def test_log_collector_captures_already_downloaded_marker():
+    """Round-4 N-02: yt-dlp routes "[download] X has already been downloaded"
+    through logger.debug (verified against yt-dlp's to_screen source), which
+    the collector skipped — F-07 skip detection read a buffer that could never
+    contain the marker. The collector must capture exactly that line."""
+    from engine import _YdlLogCollector
+
+    c = _YdlLogCollector()
+    c.debug("[download] OM – SIYA ENTRY.mp3 has already been downloaded")
+    c.debug("[download] Destination: OM – SIYA ENTRY.mp3")  # verbose noise
+    c.info("[download] 100% of 3.00MiB")  # info stays skipped
+    c.warning("some warning")  # warnings still captured
+
+    joined = "\n".join(c.lines)
+    assert any("has already been downloaded" in l for l in c.lines)
+    assert not any("Destination:" in l for l in c.lines), "debug noise must stay skipped"
+    assert not any("100%" in l for l in c.lines), "info lines must stay skipped"
+    assert "some warning" in joined
+
+
 def test_environ_not_prepended_when_ffmpeg_on_path(monkeypatch):
     """F-17: constructing an engine must not mutate process-global PATH — the
     PATH/FFMPEG_PATH prepend was racy across 5 concurrent constructors."""
@@ -215,3 +253,61 @@ def test_environ_not_prepended_when_ffmpeg_on_path(monkeypatch):
         assert _os.environ.get("FFMPEG_PATH") is None or _os.path.isabs(
             _os.environ["FFMPEG_PATH"]
         )
+
+
+def test_duplicate_title_collision_retries_with_id_suffixed_template(monkeypatch, tmp_path):
+    """Round-4 N-03 (F-07 core): a second video whose sanitized title collides
+    with an existing file must trigger exactly ONE retry with a "[%(id)s]"
+    template — not silently bind (or overwrite) the other video's file."""
+    import time as _time
+    from unittest.mock import patch, MagicMock
+
+    import engine as eng
+
+    engine = AudioDownloadEngine(
+        output_dir=str(tmp_path), mode="audio", audio_format="mp3", quality="high"
+    )
+    # The engine resolved ffmpeg on this machine may be non-None; the flow
+    # under test never invokes it (embed/verify are patched out below).
+
+    pre_existing = tmp_path / "Same Title.mp3"
+    pre_existing.write_bytes(b"old content")
+    os.utime(pre_existing, (1, 1))  # ancient mtime — predates any download
+
+    calls = {"resolve": 0}
+    opts_seen = []
+
+    def fake_resolve(info):
+        calls["resolve"] += 1
+        if calls["resolve"] == 1:
+            return str(pre_existing)  # collision: pre-existing, older file
+        fresh = tmp_path / "Same Title [abc].mp3"
+        fresh.write_bytes(b"fresh content")
+        future = _time.time() + 10
+        os.utime(fresh, (future, future))  # created AFTER download start
+        return str(fresh)
+
+    monkeypatch.setattr(engine, "_resolve_filepath", fake_resolve)
+    monkeypatch.setattr(eng, "embed_metadata", lambda *a, **k: (True, False))
+    monkeypatch.setattr(eng, "verify_metadata", lambda *a, **k: {})
+    monkeypatch.setattr(eng, "verify_format", lambda *a, **k: (True, "mp3", 320))
+
+    info = {"title": "Same Title", "id": "abc", "ext": "mp3", "duration": 1, "uploader": "u"}
+    mock_ydl = MagicMock()
+    mock_ydl.extract_info.return_value = dict(info)
+    mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+    mock_ydl.__exit__ = MagicMock(return_value=False)
+
+    def capture_opts(opts, *a, **kw):
+        opts_seen.append(dict(opts))
+        return mock_ydl
+
+    with patch("engine.YoutubeDL", side_effect=capture_opts):
+        result = engine.download("https://youtu.be/abc")
+
+    assert result.success is True
+    assert calls["resolve"] == 2, "exactly one collision retry expected"
+    assert len(opts_seen) == 2
+    assert opts_seen[0]["outtmpl"].endswith("%(title)s.%(ext)s")
+    assert "[%(id)s]" in opts_seen[1]["outtmpl"]
+    assert result.filepath == str(tmp_path / "Same Title [abc].mp3")

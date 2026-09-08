@@ -116,6 +116,10 @@ def _write_result(id_: str, result: DownloadResult) -> None:
         "metadata_engine": result.metadata_engine,
         "metadata_container": result.metadata_container,
         "metadata_cover_art": result.metadata_cover_art,
+        # Round-4 audit fix (N-01): the dataclass carried `warnings` but the
+        # payload omitted it — the browser's "Completed — …" note and the
+        # honesty warnings were dead code end-to-end.
+        "warnings": result.warnings,
     }
     _write_message(payload)
 

@@ -115,6 +115,53 @@
 17. **F-18 Route header comment** said `POST /api/cancel`. **FIXED**:
     `POST /api/download/cancel`.
 
+## Round 4 re-audit (at `2229e77`) — 3 wire bugs found & fixed, 1 data-loss gap closed, open items listed
+
+The re-audit targeted Round-3's own diffs with end-to-end verification (the unit
+suites passed while real behavior didn't — see N-01/N-02).
+
+1. **N-01 (HIGH) `result.warnings` never reached the NDJSON wire** — `_write_result`
+   omitted the field the dataclass carried, so the browser's "Completed — …" note
+   and server-side honesty were dead code despite 69 passing tests. **FIXED**:
+   payload now carries `warnings`; pinned by `test_write_result_carries_warnings_on_the_wire`
+   and live-verified against a real re-download via a WS listener.
+2. **N-02 (HIGH) F-07 skip detection could never fire** — with a logger installed,
+   yt-dlp routes ALL `to_screen` output (incl. "[download] X has already been
+   downloaded") through `logger.debug` (verified against yt-dlp's `to_screen`
+   source), which `_YdlLogCollector` dropped wholesale. **FIXED**: the collector
+   captures exactly that marker line; debug/info noise stays skipped.
+3. **N-03 (HIGH, data loss) duplicate-title collision was NOT actually fixed by
+   Round 3** — only the (dead) messaging shipped. Empirically, re-downloading the
+   same audio re-downloads the source and re-extracts, overwriting the existing
+   file at the same path: a *different* video with the same sanitized title would
+   destroy the first video's file. **FIXED**: `_download_once` now resolves the
+   output INSIDE its loop; a resolved path older than the download start triggers
+   exactly one retry with a `"%(title)s [%(id)s].%(ext)s"` template (never deletes
+   or overwrites; idempotent when the id-suffixed file also pre-exists). Pinned by
+   `test_duplicate_title_collision_retries_with_id_suffixed_template`.
+4. **N-05 (MED) CSP blocked the IPv6 loopback the server accepts** — `allowedHostsFor`
+   and the (tested) ws-origin check admit `[::1]`, but the new `connect-src` didn't,
+   so browsers on `http://[::1]:3000` silently lost the WS. **FIXED**: added
+   `ws://[::1]:* wss://[::1]:*`.
+
+### Still open (assessed, not fixed)
+- **N-04 (MED)**: `restoreActiveJobs()` runs once at mount; a page opened while the
+  engine is still starting gets `[]` and stays empty (progress events for unknown
+  ids are no-ops). Recommendation: re-run restore when `engine_ready` transitions.
+- **N-06 (LOW-MED)**: dropping the PATH prepend (F-17) means `verify_format`'s
+  `shutil.which("ffprobe")` misses ffprobe in FFMPEG_PATH-only setups → mkv/webm
+  verification silently downgrades to extension-trust there.
+- **N-07 (LOW)**: the F-03 result guard covers only `cancelled`; a late result can
+  still flip `completed`→`failed` or vice versa (no known engine path emits that).
+- **N-08 (LOW)**: `trim_start` without `trim_end` passes validation but is silently
+  ignored by the engine (it requires both) — could 400 instead.
+- **N-09 (LOW)**: client watchdog (60 s) can fire before the engine's probe deadline
+  resolves; a late `probe_result` then replaces the timeout error (self-healing).
+- **N-10 (LOW)**: no automated test asserts the CSP header value (verified live
+  twice); a server-level header test would close that gap.
+- **N-11 (cosmetic)**: server-persisted history records lack `thumbnail` (the
+  client-saved ones carry it) — drawer rows show no art for those.
+
 ## Runtime notes
 - Downloads → `downloads/` (gitignored); history → `web/data/history.json` (gitignored,
   100-record cap, atomic temp-file+rename writes); logs rotate at 5 MB × 3 backups.
