@@ -145,9 +145,15 @@ suites passed while real behavior didn't — see N-01/N-02).
    `ws://[::1]:* wss://[::1]:*`.
 
 ### Still open (assessed, not fixed)
-- **N-04 (MED)**: `restoreActiveJobs()` runs once at mount; a page opened while the
-  engine is still starting gets `[]` and stays empty (progress events for unknown
-  ids are no-ops). Recommendation: re-run restore when `engine_ready` transitions.
+- **N-04 (LOW-MED, scope refined)**: `restoreActiveJobs()` runs once at mount. The
+  original assessment ("page opened while the engine is starting") overstates it:
+  a starting/restarting engine has an EMPTY job map — downloads die with the
+  engine process — so there is nothing to restore in that state. The residual gap
+  is a mount-time `requestJobs` 500 ms timeout race against a ready engine: the
+  restored queue would be empty until the next refresh. Progress events for
+  unknown ids remain no-ops. Recommendation if it ever bites: re-run restore on
+  the first `engine_ready` after mount, or create rows from unseen-id progress
+  events.
 - **N-06 (LOW-MED)**: dropping the PATH prepend (F-17) means `verify_format`'s
   `shutil.which("ffprobe")` misses ffprobe in FFMPEG_PATH-only setups → mkv/webm
   verification silently downgrades to extension-trust there.
