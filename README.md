@@ -1,11 +1,11 @@
-# YTDL Modern
+# YTDL Flow
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green?logo=node.js)](https://nodejs.org/)
 [![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![GitHub Issues](https://img.shields.io/github/issues/nishanth-kkj9/ytdl_modern)](https://github.com/nishanth-kkj9/ytdl_modern/issues)
+[![GitHub Issues](https://img.shields.io/github/issues/nishanth-kkj9/ytdl-flow)](https://github.com/nishanth-kkj9/ytdl-flow/issues)
 
 A modern, locally-hosted YouTube audio/video downloader with a beautiful web UI. Built with React, Node.js, Express, and yt-dlp.
 
@@ -33,7 +33,7 @@ A modern, locally-hosted YouTube audio/video downloader with a beautiful web UI.
 
 ## Quick Overview
 
-YTDL Modern is a **localhost-only** YouTube downloader that runs entirely on your machine. It provides:
+YTDL Flow is a **localhost-only** YouTube downloader that runs entirely on your machine. It provides:
 
 - **Web UI** at `http://127.0.0.1:3000` for probing, downloading, and managing history
 - **REST API** for programmatic access
@@ -149,8 +149,8 @@ YTDL Modern is a **localhost-only** YouTube downloader that runs entirely on you
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/nishanth-kkj9/ytdl_modern.git
-cd ytdl_modern
+git clone https://github.com/nishanth-kkj9/ytdl-flow.git
+cd ytdl-flow
 ```
 
 ### Step 2: Install Frontend Dependencies
@@ -363,7 +363,7 @@ Connect to `ws://127.0.0.1:3000/ws` for real-time server-to-client events.
 ## Project Structure
 
 ```
-ytdl_modern/
+ytdl-flow/
 ├── src/                           # React frontend (TypeScript + Tailwind)
 │   ├── components/                # Reusable UI components
 │   ├── api/
@@ -434,7 +434,7 @@ ytdl_modern/
 
 ## Security Considerations
 
-YTDL Modern implements **defense-in-depth** security controls:
+YTDL Flow implements **defense-in-depth** security controls:
 
 | Control | Implementation | Rationale |
 |---------|---------------|-----------|
@@ -573,8 +573,8 @@ Thank you for your interest in contributing! Please read [CONTRIBUTING.md](CONTR
 **Quick start:**
 
 ```bash
-git clone https://github.com/nishanth-kkj9/ytdl_modern.git
-cd ytdl_modern
+git clone https://github.com/nishanth-kkj9/ytdl-flow.git
+cd ytdl-flow
 npm install && cd web && npm install && cd ..
 python -m venv venv && source venv/bin/activate
 pip install -r python-engine/requirements.lock
@@ -602,4 +602,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-**Questions?** Open an [issue](https://github.com/nishanth-kkj9/ytdl_modern/issues) or [discussion](https://github.com/nishanth-kkj9/ytdl_modern/discussions).
+**Questions?** Open an [issue](https://github.com/nishanth-kkj9/ytdl-flow/issues) or [discussion](https://github.com/nishanth-kkj9/ytdl-flow/discussions).

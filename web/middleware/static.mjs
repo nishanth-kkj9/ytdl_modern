@@ -41,7 +41,7 @@ export function staticMiddleware(config) {
         .send(
           `<!doctype html><html><body style="font-family:sans-serif;background:#08080D;color:#E2E8F0;display:grid;place-items:center;height:100vh;margin:0">
           <div style="text-align:center">
-            <h1>YTDL Modern Web</h1>
+            <h1>YTDL Flow Web</h1>
             <p>Frontend build not found. Run <code>npm run build</code> in the project root, then restart the server.</p>
             <p>Backend API is running.</p>
           </div>

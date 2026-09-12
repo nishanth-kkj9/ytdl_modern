@@ -251,7 +251,7 @@ async function main() {
 
   // ── Listen ──────────────────────────────────────────────────────────────
   server.listen(config.port, config.host, () => {
-    console.log(`\n🎬 YTDL Modern Web`);
+    console.log(`\n🎬 YTDL Flow Web`);
     console.log(`   ➜  http://${config.host}:${config.port}`);
     console.log(`   ➜  API health: http://${config.host}:${config.port}/api/health`);
     console.log(`   ➜  WebSocket: ws://${config.host}:${config.port}/ws\n`);

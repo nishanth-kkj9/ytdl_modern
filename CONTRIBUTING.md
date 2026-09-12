@@ -1,4 +1,4 @@
-# Contributing to YTDL Modern
+# Contributing to YTDL Flow
 
 Thanks for your interest! This guide will help you get started quickly.
 
