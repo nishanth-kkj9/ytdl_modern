@@ -1,4 +1,10 @@
+<div align="center">
+
+<img src="references/branding/ytdl-flow-logo.png" alt="YTDL Flow logo" width="340" />
+
 # YTDL Flow
+
+**A modern, locally-hosted YouTube audio/video downloader with a beautiful web UI.** Built with React, Node.js, Express, and yt-dlp.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
@@ -7,9 +13,9 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/nishanth-kkj9/ytdl-flow)](https://github.com/nishanth-kkj9/ytdl-flow/issues)
 
-A modern, locally-hosted YouTube audio/video downloader with a beautiful web UI. Built with React, Node.js, Express, and yt-dlp.
+*Media discovery → format selection → queue → download → processing → verification → history/status*
 
-**Features:** Paste a YouTube link → probe metadata → select format and quality → download with live progress tracking and comprehensive format verification.
+</div>
 
 ---
 
@@ -26,6 +32,7 @@ A modern, locally-hosted YouTube audio/video downloader with a beautiful web UI.
 - [Security Considerations](#security-considerations)
 - [Deployment & CI/CD](#deployment--cicd)
 - [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -557,6 +564,26 @@ Then visit `http://127.0.0.1:3100`.
 2. Verify FFmpeg is installed and working: `ffprobe -version`
 3. Try a different quality/format preset
 4. Open an issue with the download URL and format selected
+
+---
+
+## Documentation
+
+Beyond this README, the repository ships a documentation set maintained for
+humans and coding agents alike:
+
+| Document | Contents |
+|----------|----------|
+| [AGENTS.md](AGENTS.md) | Binding rules for coding agents (branding policy, reference hierarchy, verification gates) |
+| [docs/product.md](docs/product.md) | What YTDL Flow is, target users, core media workflow, CURRENT/PLANNED/FUTURE direction |
+| [docs/architecture.md](docs/architecture.md) | Canonical three-tier architecture overview with end-to-end flow diagrams |
+| [docs/design-system.md](docs/design-system.md) | Verified design tokens (colors, typography, radii, motion) from `src/styles.css` |
+| [docs/branding.md](docs/branding.md) | Official visual identity, logo rules and usage policy |
+| [docs/roadmap.md](docs/roadmap.md) | Completed / In Progress / Planned / Ideas — evidence-based roadmap |
+| [docs/decisions.md](docs/decisions.md) | ADR-style decision log (nine verifiable decisions) |
+| [docs/codebase/](docs/codebase) | Deep technical reference: architecture, stack, structure, conventions, testing, integrations, concerns |
+| [plans/](plans/README.md) | Numbered implementation plans (001–006) with execution records |
+| [references/branding/](references/branding/README.md) | **The authoritative YTDL Flow logo** (original raster, hash-pinned) |
 
 ---
 
