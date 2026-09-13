@@ -46,7 +46,7 @@ function request(app, path) {
   app.use("/api/status", statusRouter(makeEngine()));
   const res = await request(app, "/api/status");
   assert.strictEqual(res.status, 200);
-  assert.strictEqual(res.body.server, "ytdl-modern-web");
+  assert.strictEqual(res.body.server, "ytdl-flow-web");
   assert.strictEqual(typeof res.body.version, "string", "version should be a string");
   assert.ok(Number.isInteger(res.body.uptimeSeconds), "uptimeSeconds should be an integer");
   assert.ok(res.body.uptimeSeconds >= 0, "uptimeSeconds should not be negative");

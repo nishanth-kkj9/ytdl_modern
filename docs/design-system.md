@@ -74,8 +74,10 @@ separate brand layer and is **not** part of these UI tokens.
 - **Terminal-result guard:** components consuming engine events must not
   overwrite a terminal state (`cancelled`/`done`) with late messages —
   enforced in `src/hooks/useEngineEvents.ts`.
-- Icons: small inline SVGs (e.g. header play badge in `App.tsx`); no icon
-  library. The logo is never reconstructed as SVG (see `docs/branding.md`).
+- Icons: standardized on `lucide-react` (ADR-010) at the established small
+  sizes (`h-3.5 w-3.5` / `h-4 w-4`); brand emblem slots use the
+  `public/branding/ytdl-flow-icon.png` derivative, never a hand-drawn SVG
+  lookalike (see `docs/branding.md`). The logo is never reconstructed as SVG.
 
 ## Adding/changing tokens
 

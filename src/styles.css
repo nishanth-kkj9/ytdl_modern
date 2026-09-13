@@ -431,9 +431,17 @@
     width: 36px;
     height: 36px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #F59E0B, #D97706);
-    color: #08080D;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
+    /* Brand tile-emblem derivative (public/branding/ytdl-flow-icon.png) fills
+       the badge; neutral raised surface so the purple emblem reads true. */
+    background: linear-gradient(135deg, #1A1A24, #22222E);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .badge-play img {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
   }
 
   .tabular-nums {

@@ -24,7 +24,7 @@ export function statusRouter(engineManager) {
       }
     }
     res.json({
-      server: "ytdl-modern-web",
+      server: "ytdl-flow-web",
       version: config.version,
       // Seconds since the Node.js process started (monotonic-ish; resets on
       // server restart). Lets the UI/dashboards detect a silently restarted

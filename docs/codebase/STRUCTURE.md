@@ -5,7 +5,7 @@
 ## Layout
 
 ```
-ytdl_modern/
+ytdl-flow/
 ├─ src/                     # React frontend (TS)
 │  ├─ api/transport.ts      # REST + WebSocket transport (Tauri-style invoke/listen)
 │  ├─ components/           # UI components (UrlInput, ProbeCard, WaveformProgress,

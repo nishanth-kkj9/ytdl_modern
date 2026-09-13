@@ -679,7 +679,7 @@ def _embed_opus(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[boo
             "ALBUM": _sanitize_meta(meta.album),
             "DATE": _sanitize_meta(meta.upload_date),
             "GENRE": _sanitize_meta(meta.genre),
-            "COMMENT": _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl_modern",
+            "COMMENT": _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl flow",
             "VIDEO_ID": _sanitize_meta(meta.video_id),
             "LANGUAGE": _sanitize_meta(meta.language),
             "DESCRIPTION": _sanitize_meta(meta.description),
@@ -756,7 +756,7 @@ def _embed_mp3(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
             tags.add(COMM(encoding=3, lang="eng", desc="Comment", text=web_url))
         else:
             tags.add(COMM(encoding=3, lang="eng", desc="Comment",
-                          text="Downloaded with ytdl_modern"))
+                          text="Downloaded with ytdl flow"))
         if vid_id:
             tags.add(TXXX(encoding=3, desc="video_id", text=vid_id))
         if lang:
@@ -812,7 +812,7 @@ def _embed_mp4(filepath: str, meta: Metadata, cover: bytes | None) -> tuple[bool
         if comment_parts:
             audio.tags["\xa9cmt"] = [" | ".join(comment_parts)]
         else:
-            audio.tags["\xa9cmt"] = ["Downloaded with ytdl_modern"]
+            audio.tags["\xa9cmt"] = ["Downloaded with ytdl flow"]
         if desc:
             audio.tags["desc"] = [desc]
             audio.tags["ldes"] = [desc]
@@ -945,7 +945,7 @@ def verify_metadata(filepath: str, meta: Metadata) -> dict[str, bool]:
         "video_id":    _sanitize_meta(meta.video_id),
         "description": _sanitize_meta(meta.description),
     }
-    expected_comment = _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl_modern"
+    expected_comment = _sanitize_meta(meta.webpage_url) or "Downloaded with ytdl flow"
 
     # Fields that are NOT_REQUESTED (empty in meta) are absent from the result.
     for key, val in expected.items():

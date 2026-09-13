@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PanelRight } from "lucide-react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { DrawerPanel } from "./components/DrawerPanel";
@@ -68,9 +69,7 @@ function App() {
               <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 sm:px-6 sm:py-3.5">
                 <div className="flex items-center gap-3.5">
                   <div className="badge-play" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
+                    <img src="/branding/ytdl-flow-icon.png" alt="" width={22} height={22} />
                   </div>
                   <div>
                     <h1 className="text-base font-semibold tracking-tight text-text">
@@ -111,9 +110,7 @@ function App() {
                     onClick={() => setDrawerOpen(true)}
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition hover:bg-raised hover:text-text-secondary"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
+                    <PanelRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               </header>

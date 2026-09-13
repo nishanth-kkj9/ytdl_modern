@@ -219,7 +219,7 @@ export function UrlInput() {
             </svg>
             <span>{statusMessage || (probing ? "Probing URL..." : "Paste a link to probe")}</span>
           </div>
-          <span className="text-[10px] font-medium tracking-wider text-text-muted uppercase">ytdl_modern</span>
+          <span className="text-[10px] font-medium tracking-wider text-text-muted uppercase">ytdl flow</span>
         </div>
 
         {queue.length > 0 && (

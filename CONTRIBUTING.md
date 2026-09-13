@@ -13,8 +13,8 @@ Thanks for your interest! This guide will help you get started quickly.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/nishanth-kkj9/ytdl_modern.git
-cd ytdl_modern
+git clone https://github.com/nishanth-kkj9/ytdl-flow.git
+cd ytdl-flow
 
 # 2. Install frontend dependencies
 npm install
@@ -49,7 +49,7 @@ Open http://localhost:3000 — Vite proxies `/api` and `/ws` to Express.
 ## Project Structure
 
 ```
-ytdl_modern/
+ytdl-flow/
 ├── src/                  # React frontend (Vite + TypeScript + Tailwind)
 │   ├── api/              # WebSocket transport, REST wrappers
 │   ├── components/       # UI components

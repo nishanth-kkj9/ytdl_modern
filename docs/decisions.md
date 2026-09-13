@@ -172,6 +172,15 @@ paths, and history for zero functional gain.
 Docs must explain the historical mapping (done in `AGENTS.md`,
 `docs/product.md`); future migrations require an explicit decision here.
 
+### Audit follow-up (2026-09-13)
+A full-tree audit (all extensions) found three user-facing surfaces the
+original `*.md/*.json/*.mjs/*.py` sweep had missed, all renamed here:
+`/api/status` payload id (`ytdl-modern-web` → `ytdl-flow-web`, test updated in
+lockstep), the engine's metadata fallback comment written into downloaded
+files (`"Downloaded with ytdl_modern"` → `"Downloaded with ytdl flow"`), and
+`release.yml` (archive names + release body `ytdl-modern-*` → `ytdl-flow-*`).
+Internal package names and module docstrings intentionally unchanged.
+
 ---
 
 ## ADR-009 — Logo reference is an immutable raster original
@@ -191,6 +200,39 @@ Preserves brand integrity and provenance; avoids an unmaintainable set of
 recreated vector "lookalikes".
 
 ### Consequences
-Small-size uses (favicon) currently use an inline placeholder until a
-derivative is actually needed (tracked in `docs/roadmap.md` Ideas).
+Small-size uses (favicon, header badge) stayed on an inline placeholder until
+the derivative was actually needed — see ADR-010 for the sanctioned creation
+and `docs/branding.md` for the production-asset provenance.
+
+---
+
+## ADR-010 — Brand icon derivative + lucide-react icon set
+
+### Context
+The app previously used a hand-drawn inline-SVG play glyph in the header
+badge, empty state, and favicon — a generic lookalike rather than the real
+brand emblem. UI icons were ad-hoc inline SVGs and text glyphs ("✓", "✕") in
+toasts. The user requested an improved in-app logo and proper icons.
+
+### Decision
+1. Create a production derivative: `public/branding/ytdl-flow-icon.png`
+   (512×512) — a programmatic square crop of the purple tile emblem from the
+   authoritative reference `references/branding/ytdl-flow-logo.png` (original
+   untouched). Wire it into the header badge, empty-state badge, favicon, and
+   `apple-touch-icon` (served at `/branding/ytdl-flow-icon.png`).
+2. Add `lucide-react` as the standard UI icon library (toasts, drawer trigger)
+   at the existing small icon sizes; CSP `img-src 'self'` already admits the
+   self-hosted asset.
+
+### Reason
+AGENTS.md forbids recreating the logo as SVG or substituting generic icons;
+only a derivative of the original is policy-compliant for small UI slots.
+`lucide-react` is tree-shakeable, matches the stroke-based inline-SVG style
+already in use, and removes the text-glyph iconography.
+
+### Consequences
+One new runtime dependency (frontend-only, tree-shaken); the derivative must
+be regenerated from the original if the reference ever changes; docs
+(`docs/branding.md`, `docs/design-system.md`, `docs/roadmap.md`) updated in
+the same change.
 

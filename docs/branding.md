@@ -60,10 +60,10 @@ soft radial lighting (near-black edges, lighter center glow). It consists of:
 
 | Surface | Guidance |
 |---------|----------|
-| Application header | Text wordmark ("YTDL Flow") currently; the logo image may be introduced as a header asset using the tile emblem only (square derivative) so the header stays compact. |
+| Application header | Uses the square tile-emblem derivative (`public/branding/ytdl-flow-icon.png`) in the header badge so the compact slot carries the real brand emblem, not a generic play glyph. |
 | Navigation / drawer | Prefer the square tile-emblem derivative at small sizes; keep clear space around it. |
 | Landing / no-build placeholder page | Full logo or emblem; must sit on a dark background consistent with `#08080D`. |
-| Favicon | Currently an inline SVG placeholder play glyph. May be migrated to a square derivative under `public/branding/` when the app adopts real image assets — derivative creation only when this is actually needed. |
+| Favicon | Uses the square derivative under `public/branding/` (served at `/branding/ytdl-flow-icon.png`, same asset for `apple-touch-icon`). |
 | Documentation | Reference the canonical path `references/branding/ytdl-flow-logo.png`; do not duplicate the file. |
 | README | May embed the logo at the top; link or copy under `public/branding/`, never move the original. |
 
@@ -75,3 +75,13 @@ from the original **only when technically necessary**, stored under
 `public/branding/` (e.g. `ytdl-flow-icon.png`). The crop must preserve the
 emblem's geometry and colors exactly; the original reference file is never
 replaced by the derivative.
+
+## Production assets (current)
+
+| Asset | Path | Provenance |
+|-------|------|------------|
+| Tile-emblem icon (512×512 PNG) | `public/branding/ytdl-flow-icon.png` | Programmatic square crop of the purple app-tile emblem from the original reference (color-detection crop, geometry/colors preserved). Used by: app header badge, empty-state badge, favicon, `apple-touch-icon`. Served by both Vite (`public/`) and Express (`dist/branding/…`). |
+
+The original reference file is untouched (hash pinned in
+`references/branding/README.md`); the icon is a regenerated-at-need derivative
+and can be rebuilt from the original at any time.

@@ -43,28 +43,28 @@ jobs:
 
       - name: Create release archive
         run: |
-          mkdir -p release/ytdl-modern/web
-          cp -r dist release/ytdl-modern/
+          mkdir -p release/ytdl-flow/web
+          cp -r dist release/ytdl-flow/
           # Curated web/ contents — NEVER copy web/node_modules or web/data/
           # (data/ holds the local user's download history; node_modules is
           # reinstalled by users via npm install).
           # NOTE: New web/ modules must be added to this list.
           cp web/server.mjs web/config.mjs web/eventBus.mjs web/validate.mjs \
-             web/package.json web/package-lock.json release/ytdl-modern/web/
-          cp -r web/routes web/services web/middleware release/ytdl-modern/web/
-          cp -r python-engine release/ytdl-modern/
-          rm -rf release/ytdl-modern/python-engine/__pycache__ \
-                 release/ytdl-modern/python-engine/.pytest_cache
-          cp package.json README.md LICENSE release/ytdl-modern/
+             web/package.json web/package-lock.json release/ytdl-flow/web/
+          cp -r web/routes web/services web/middleware release/ytdl-flow/web/
+          cp -r python-engine release/ytdl-flow/
+          rm -rf release/ytdl-flow/python-engine/__pycache__ \
+                 release/ytdl-flow/python-engine/.pytest_cache
+          cp package.json README.md LICENSE release/ytdl-flow/
           cd release
-          tar -czf ytdl-modern-${{ github.ref_name }}.tar.gz ytdl-modern/
-          zip -r ytdl-modern-${{ github.ref_name }}.zip ytdl-modern/
+          tar -czf ytdl-flow-${{ github.ref_name }}.tar.gz ytdl-flow/
+          zip -r ytdl-flow-${{ github.ref_name }}.zip ytdl-flow/
 
       - name: Generate SHA-256 checksums
         working-directory: release
         run: |
-          sha256sum ytdl-modern-${{ github.ref_name }}.tar.gz \
-                    ytdl-modern-${{ github.ref_name }}.zip \
+          sha256sum ytdl-flow-${{ github.ref_name }}.tar.gz \
+                    ytdl-flow-${{ github.ref_name }}.zip \
             > sha256sums.txt
           cat sha256sums.txt
 
@@ -75,11 +75,11 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release/ytdl-modern-${{ github.ref_name }}.tar.gz
-            release/ytdl-modern-${{ github.ref_name }}.zip
+            release/ytdl-flow-${{ github.ref_name }}.tar.gz
+            release/ytdl-flow-${{ github.ref_name }}.zip
             release/sha256sums.txt
           body: |
-            ## YTDL Modern ${{ github.ref_name }}
+            ## YTDL Flow ${{ github.ref_name }}
 
             ### What's New
             - See the [README](README.md) for setup and usage details.

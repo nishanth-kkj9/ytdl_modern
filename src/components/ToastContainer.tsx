@@ -1,12 +1,15 @@
 import { useEffect } from "react";
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { useDownloadStore } from "../stores/downloadStore";
 import type { Toast } from "../types";
 
-const ICONS: Record<Toast["type"], string> = {
-  success: "✓",
-  error: "✕",
-  warning: "⚠",
-  info: "ℹ",
+import type { LucideIcon } from "lucide-react";
+
+const ICONS: Record<Toast["type"], LucideIcon> = {
+  success: CheckCircle2,
+  error: XCircle,
+  warning: AlertTriangle,
+  info: Info,
 };
 
 const TYPE_LABELS: Record<Toast["type"], string> = {
@@ -26,6 +29,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   }, [toast.id, toast.duration, removeToast]);
 
   const dismiss = () => removeToast(toast.id);
+  const Icon = ICONS[toast.type];
 
   return (
     <div
@@ -36,7 +40,9 @@ function ToastItem({ toast }: { toast: Toast }) {
       style={{ cursor: "pointer" }}
       title="Click to dismiss"
     >
-      <span className="toast-icon" aria-hidden="true">{ICONS[toast.type]}</span>
+      <span className="toast-icon" aria-hidden="true">
+        <Icon className="h-4 w-4" />
+      </span>
       <div className="toast-body">
         <span className="toast-type-label">{TYPE_LABELS[toast.type]}</span>
         <span className="toast-message">{toast.message}</span>
@@ -49,7 +55,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         }}
         aria-label={`Dismiss ${TYPE_LABELS[toast.type]} notification`}
       >
-        ✕
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </div>
   );
